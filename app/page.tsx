@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
 
 type Gear = {
   id: number;
@@ -46,8 +48,7 @@ const gearItems: Gear[] = [
     location: "서울 성동구",
     time: "12분 전",
     condition: "A급",
-    image:
-      "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=1200&q=85",
+    image: "/products/amenity-dome-m-v2.png",
     tags: ["4인", "3계절", "풀구성"],
     passport: 96,
     seller: "성수캠퍼",
@@ -63,8 +64,7 @@ const gearItems: Gear[] = [
     location: "경기 하남시",
     time: "36분 전",
     condition: "사용감 적음",
-    image:
-      "https://images.unsplash.com/photo-1523987355523-c7b5b0dd90a7?auto=format&fit=crop&w=1200&q=85",
+    image: "/products/chair-one-tan-pair-v2.png",
     tags: ["2개 세트", "경량", "정품"],
     passport: 91,
     seller: "미사피크닉",
@@ -80,8 +80,7 @@ const gearItems: Gear[] = [
     location: "서울 마포구",
     time: "1시간 전",
     condition: "A급",
-    image:
-      "https://images.unsplash.com/photo-1475483768296-6163e08872a1?auto=format&fit=crop&w=1200&q=85",
+    image: "/products/three-face-mini-light-v2.png",
     tags: ["충전 정상", "파우치", "웜톤"],
     passport: 88,
     seller: "망원노을",
@@ -97,8 +96,7 @@ const gearItems: Gear[] = [
     location: "인천 연수구",
     time: "2시간 전",
     condition: "미사용급",
-    image:
-      "https://images.unsplash.com/photo-1525811902-f2342640856e?auto=format&fit=crop&w=1200&q=85",
+    image: "/products/comfort-plus-mat-v2.png",
     tags: ["R-value 4", "더블밸브", "수선 없음"],
     passport: 98,
     seller: "송도백패커",
@@ -114,8 +112,7 @@ const gearItems: Gear[] = [
     location: "서울 은평구",
     time: "어제",
     condition: "B+급",
-    image:
-      "https://images.unsplash.com/photo-1529385101576-4e03aae38ffc?auto=format&fit=crop&w=1200&q=85",
+    image: "/products/kovea-grill-fullset-v2.png",
     tags: ["점화 확인", "전골팬", "가방 포함"],
     passport: 84,
     seller: "북한산토끼",
@@ -131,8 +128,7 @@ const gearItems: Gear[] = [
     location: "경기 고양시",
     time: "어제",
     condition: "사용감 적음",
-    image:
-      "https://images.unsplash.com/photo-1478131143081-80f7f84ca84d?auto=format&fit=crop&w=1200&q=85",
+    image: "/products/down-sleepingbag-800fp-v2.png",
     tags: ["800FP", "세탁 완료", "동계"],
     passport: 93,
     seller: "일산밤공기",
@@ -200,6 +196,9 @@ export default function Home() {
   const [selectedNote, setSelectedNote] = useState<(typeof fieldNotes)[number] | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profileAvatar, setProfileAvatar] = useState("");
+  const [authLoading, setAuthLoading] = useState(true);
   const [questions, setQuestions] = useState<string[]>([
     "2인 오토캠핑, 첫 텐트는 어떤 게 좋을까요?",
   ]);
@@ -222,6 +221,44 @@ export default function Home() {
       return categoryMatch && queryMatch;
     });
   }, [activeCategory, query, listingItems]);
+
+  useEffect(() => {
+    let active = true;
+
+    const applyUser = (user: User | null) => {
+      if (!active) return;
+      if (!user) {
+        setProfileName("");
+        setProfileEmail("");
+        setProfileAvatar("");
+        return;
+      }
+      const email = user.email ?? "";
+      const displayName = String(user.user_metadata?.full_name || user.user_metadata?.name || email.split("@")[0] || "캠퍼");
+      setProfileName(displayName);
+      setProfileEmail(email);
+      setProfileAvatar(String(user.user_metadata?.avatar_url || user.user_metadata?.picture || ""));
+    };
+
+    void supabase.auth.getSession().then(({ data }) => {
+      applyUser(data.session?.user ?? null);
+      if (active) setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      applyUser(session?.user ?? null);
+      setAuthLoading(false);
+      if (event === "SIGNED_IN") {
+        setPanel("profile");
+        showToast("Google 계정으로 로그인했어요.");
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedGear && !selectedNote && !panel) return;
@@ -271,13 +308,34 @@ export default function Home() {
     setPanel(nextPanel);
   }
 
-  function submitLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const email = String(data.get("email") || "캠퍼");
-    setProfileName(email.split("@")[0] || "캠퍼");
-    setPanel("profile");
-    showToast("캠프루프에 로그인했어요.");
+  async function signInWithGoogle() {
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/?auth=google`,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+    if (error) {
+      setAuthLoading(false);
+      showToast(error.message.includes("provider is not enabled") ? "Google 로그인 제공자 설정이 필요해요." : "Google 로그인을 시작하지 못했어요.");
+    }
+  }
+
+  async function signOut() {
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signOut();
+    setAuthLoading(false);
+    if (error) {
+      showToast("로그아웃하지 못했어요. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+    setPanel(null);
+    showToast("안전하게 로그아웃했어요.");
   }
 
   function submitListing(event: FormEvent<HTMLFormElement>) {
@@ -363,27 +421,30 @@ export default function Home() {
 
     if (panel === "login") {
       return (
-        <form className="service-form" onSubmit={submitLogin}>
-          <p className="panel-lead">캠프루프에 로그인하고 찜 목록과 내 장비를 관리하세요.</p>
-          <label>이메일<input name="email" type="email" placeholder="camper@example.com" required /></label>
-          <label>비밀번호<input name="password" type="password" placeholder="8자 이상 입력" minLength={8} required /></label>
-          <button className="primary-action" type="submit">로그인</button>
-          <button className="social-action" type="button" onClick={() => { setProfileName("캠핑고수"); setPanel("profile"); showToast("체험 계정으로 로그인했어요."); }}>체험 계정으로 둘러보기</button>
-        </form>
+        <div className="service-form auth-panel">
+          <div className="auth-intro"><span> C </span><div><h3>다시 캠핑을 이어가세요.</h3><p>Google 계정으로 로그인하면 찜 목록과 판매 장비, 캠핑로그를 안전하게 관리할 수 있어요.</p></div></div>
+          <button className="google-action" type="button" onClick={signInWithGoogle} disabled={authLoading}>
+            <span className="google-mark" aria-hidden="true">G</span>
+            {authLoading ? "로그인 상태 확인 중…" : "Google로 계속하기"}
+          </button>
+          <p className="auth-policy">계속하면 캠프루프의 <button type="button" onClick={() => setPanel("terms")}>이용약관</button>과 <button type="button" onClick={() => setPanel("privacy")}>개인정보처리방침</button>에 동의하게 됩니다.</p>
+          <div className="auth-divider"><span>또는</span></div>
+          <button className="social-action" type="button" onClick={() => { setProfileName("캠핑고수"); setProfileEmail("preview@camploop.kr"); setPanel("profile"); showToast("체험 계정으로 로그인했어요."); }}>체험 계정으로 둘러보기</button>
+        </div>
       );
     }
 
     if (panel === "profile") {
       return (
         <div className="profile-panel">
-          <div className="profile-hero"><span>{(profileName || "캠").charAt(0)}</span><div><h3>{profileName || "게스트 캠퍼"}</h3><p>{profileName ? "오토캠핑 · 장비 패스포트 멤버" : "로그인하고 내 캠프를 만들어보세요."}</p></div></div>
+          <div className="profile-hero">{profileAvatar ? <img src={profileAvatar} alt="" referrerPolicy="no-referrer" /> : <span>{(profileName || "캠").charAt(0)}</span>}<div><h3>{profileName || "게스트 캠퍼"}</h3><p>{profileEmail || (profileName ? "오토캠핑 · 장비 패스포트 멤버" : "로그인하고 내 캠프를 만들어보세요.")}</p></div></div>
           <div className="profile-stats"><div><b>{favorites.size}</b><span>찜한 장비</span></div><div><b>{listingItems.length - gearItems.length}</b><span>판매 장비</span></div><div><b>{questions.length - 1}</b><span>내 질문</span></div></div>
           <div className="panel-menu-list">
             <button type="button" onClick={() => setPanel("favorites")}><span>♡</span><div><b>찜한 장비</b><small>관심 장비를 한곳에서 확인</small></div><i>→</i></button>
             <button type="button" onClick={() => setPanel("sell")}><span>＋</span><div><b>판매 장비 관리</b><small>새 장비 등록과 판매 현황</small></div><i>→</i></button>
             <button type="button" onClick={() => setPanel("logs")}><span>♧</span><div><b>내 캠핑로그</b><small>질문과 저장한 경험 보기</small></div><i>→</i></button>
           </div>
-          {profileName ? <button className="danger-action" type="button" onClick={() => { setProfileName(""); setPanel(null); showToast("로그아웃했어요."); }}>로그아웃</button> : <button className="primary-action" type="button" onClick={() => setPanel("login")}>로그인하기</button>}
+          {profileName ? <button className="danger-action" type="button" onClick={signOut} disabled={authLoading}>{authLoading ? "처리 중…" : "로그아웃"}</button> : <button className="primary-action" type="button" onClick={() => setPanel("login")}>로그인하기</button>}
         </div>
       );
     }
@@ -555,8 +616,8 @@ export default function Home() {
 
         <div className="hero-visual">
           <img
-            src="https://images.unsplash.com/photo-1508873699372-7aeab60b44ab?auto=format&fit=crop&w=1500&q=88"
-            alt="숲속에 설치된 텐트와 캠핑 장비"
+            src="/hero/quiet-forest-camp-v2.png"
+            alt="고요한 호숫가 소나무 숲에 정돈된 베이지 텐트와 캠핑 의자"
           />
           <div className="hero-overlay" />
           <div className="hero-label">
