@@ -18,6 +18,25 @@ type Gear = {
   description: string;
 };
 
+type Panel =
+  | "gear"
+  | "favorites"
+  | "login"
+  | "sell"
+  | "logs"
+  | "safety"
+  | "guide"
+  | "policy"
+  | "faq"
+  | "contact"
+  | "notices"
+  | "question"
+  | "profile"
+  | "chat"
+  | "terms"
+  | "privacy"
+  | null;
+
 const gearItems: Gear[] = [
   {
     id: 1,
@@ -174,13 +193,24 @@ function Logo() {
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState("전체");
   const [query, setQuery] = useState("");
+  const [listingItems, setListingItems] = useState<Gear[]>(gearItems);
   const [favorites, setFavorites] = useState<Set<number>>(new Set([2]));
   const [toast, setToast] = useState("");
   const [selectedGear, setSelectedGear] = useState<Gear | null>(null);
+  const [selectedNote, setSelectedNote] = useState<(typeof fieldNotes)[number] | null>(null);
+  const [panel, setPanel] = useState<Panel>(null);
+  const [profileName, setProfileName] = useState("");
+  const [questions, setQuestions] = useState<string[]>([
+    "2인 오토캠핑, 첫 텐트는 어떤 게 좋을까요?",
+  ]);
+  const [chatGear, setChatGear] = useState<Gear | null>(null);
+  const [messages, setMessages] = useState<string[]>([
+    "안녕하세요! 장비 상태표 확인 후 궁금한 점을 남겨주세요.",
+  ]);
 
   const filteredGear = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return gearItems.filter((item) => {
+    return listingItems.filter((item) => {
       const categoryMatch =
         activeCategory === "전체" || item.category === activeCategory;
       const queryMatch =
@@ -191,12 +221,16 @@ export default function Home() {
           .includes(normalized);
       return categoryMatch && queryMatch;
     });
-  }, [activeCategory, query]);
+  }, [activeCategory, query, listingItems]);
 
   useEffect(() => {
-    if (!selectedGear) return;
+    if (!selectedGear && !selectedNote && !panel) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSelectedGear(null);
+      if (event.key === "Escape") {
+        setSelectedGear(null);
+        setSelectedNote(null);
+        setPanel(null);
+      }
     };
     document.body.classList.add("modal-open");
     window.addEventListener("keydown", onKeyDown);
@@ -204,7 +238,7 @@ export default function Home() {
       document.body.classList.remove("modal-open");
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [selectedGear]);
+  }, [selectedGear, selectedNote, panel]);
 
   function showToast(message: string) {
     setToast(message);
@@ -231,6 +265,216 @@ export default function Home() {
     showToast(query ? `‘${query}’ 검색 결과를 모았어요.` : "새로 올라온 장비를 보여드릴게요.");
   }
 
+  function openPanel(nextPanel: Exclude<Panel, null>) {
+    setSelectedGear(null);
+    setSelectedNote(null);
+    setPanel(nextPanel);
+  }
+
+  function submitLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const email = String(data.get("email") || "캠퍼");
+    setProfileName(email.split("@")[0] || "캠퍼");
+    setPanel("profile");
+    showToast("캠프루프에 로그인했어요.");
+  }
+
+  function submitListing(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const numericPrice = String(data.get("price") || "0").replace(/[^0-9]/g, "");
+    const newItem: Gear = {
+      id: Date.now(),
+      title: String(data.get("title") || "새 캠핑 장비"),
+      category: String(data.get("category") || "텐트·타프"),
+      price: `${Number(numericPrice || 0).toLocaleString("ko-KR")}원`,
+      location: String(data.get("location") || "서울 성동구"),
+      time: "방금 전",
+      condition: String(data.get("condition") || "상태 확인 중"),
+      image:
+        "https://images.unsplash.com/photo-1504851149312-7a075b496cc7?auto=format&fit=crop&w=1200&q=85",
+      tags: ["신규 등록", "상태표 작성", "직거래"],
+      passport: 72,
+      seller: profileName || "새 캠퍼",
+      sellerScore: "첫 거래",
+      description: String(data.get("description") || "꼼꼼하게 관리한 캠핑 장비입니다."),
+    };
+    setListingItems((items) => [newItem, ...items]);
+    setActiveCategory("전체");
+    setQuery("");
+    setPanel(null);
+    showToast("장비가 등록됐어요. 새 장비 목록에서 확인해보세요.");
+    window.setTimeout(() => document.querySelector("#gear")?.scrollIntoView({ behavior: "smooth" }), 80);
+  }
+
+  function submitQuestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const question = String(data.get("question") || "").trim();
+    if (!question) return;
+    setQuestions((items) => [question, ...items]);
+    setPanel("logs");
+    showToast("질문이 캠핑 Q&A에 등록됐어요.");
+  }
+
+  function submitContact(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPanel(null);
+    showToast("문의가 접수됐어요. 답변 알림을 보내드릴게요.");
+  }
+
+  function submitChat(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const message = String(data.get("message") || "").trim();
+    if (!message) return;
+    setMessages((items) => [...items, message]);
+    event.currentTarget.reset();
+  }
+
+  function startChat(item: Gear) {
+    setChatGear(item);
+    setSelectedGear(null);
+    setPanel("chat");
+  }
+
+  const panelTitles: Record<Exclude<Panel, null>, string> = {
+    gear: "전체 중고장비",
+    favorites: "찜한 장비",
+    login: "로그인",
+    sell: "장비 판매 등록",
+    logs: "캠핑로그",
+    safety: "안심거래 안내",
+    guide: "판매 가이드",
+    policy: "운영정책",
+    faq: "자주 묻는 질문",
+    contact: "고객센터 문의",
+    notices: "공지사항",
+    question: "캠핑 Q&A 작성",
+    profile: "마이 캠프",
+    chat: chatGear ? `${chatGear.seller}님과 대화` : "판매자와 대화",
+    terms: "이용약관",
+    privacy: "개인정보처리방침",
+  };
+
+  function renderPanelContent() {
+    if (!panel) return null;
+
+    if (panel === "login") {
+      return (
+        <form className="service-form" onSubmit={submitLogin}>
+          <p className="panel-lead">캠프루프에 로그인하고 찜 목록과 내 장비를 관리하세요.</p>
+          <label>이메일<input name="email" type="email" placeholder="camper@example.com" required /></label>
+          <label>비밀번호<input name="password" type="password" placeholder="8자 이상 입력" minLength={8} required /></label>
+          <button className="primary-action" type="submit">로그인</button>
+          <button className="social-action" type="button" onClick={() => { setProfileName("캠핑고수"); setPanel("profile"); showToast("체험 계정으로 로그인했어요."); }}>체험 계정으로 둘러보기</button>
+        </form>
+      );
+    }
+
+    if (panel === "profile") {
+      return (
+        <div className="profile-panel">
+          <div className="profile-hero"><span>{(profileName || "캠").charAt(0)}</span><div><h3>{profileName || "게스트 캠퍼"}</h3><p>{profileName ? "오토캠핑 · 장비 패스포트 멤버" : "로그인하고 내 캠프를 만들어보세요."}</p></div></div>
+          <div className="profile-stats"><div><b>{favorites.size}</b><span>찜한 장비</span></div><div><b>{listingItems.length - gearItems.length}</b><span>판매 장비</span></div><div><b>{questions.length - 1}</b><span>내 질문</span></div></div>
+          <div className="panel-menu-list">
+            <button type="button" onClick={() => setPanel("favorites")}><span>♡</span><div><b>찜한 장비</b><small>관심 장비를 한곳에서 확인</small></div><i>→</i></button>
+            <button type="button" onClick={() => setPanel("sell")}><span>＋</span><div><b>판매 장비 관리</b><small>새 장비 등록과 판매 현황</small></div><i>→</i></button>
+            <button type="button" onClick={() => setPanel("logs")}><span>♧</span><div><b>내 캠핑로그</b><small>질문과 저장한 경험 보기</small></div><i>→</i></button>
+          </div>
+          {profileName ? <button className="danger-action" type="button" onClick={() => { setProfileName(""); setPanel(null); showToast("로그아웃했어요."); }}>로그아웃</button> : <button className="primary-action" type="button" onClick={() => setPanel("login")}>로그인하기</button>}
+        </div>
+      );
+    }
+
+    if (panel === "sell") {
+      return (
+        <form className="service-form listing-form" onSubmit={submitListing}>
+          <div className="step-chip"><b>1</b> 장비 기본 정보 <span>상태표는 등록 후 이어서 작성할 수 있어요.</span></div>
+          <div className="form-grid">
+            <label>카테고리<select name="category" defaultValue="텐트·타프">{categories.slice(1).map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
+            <label>상태<select name="condition" defaultValue="A급"><option>A급</option><option>사용감 적음</option><option>B+급</option><option>미사용급</option></select></label>
+          </div>
+          <label>장비명<input name="title" placeholder="브랜드와 모델명을 입력하세요" required /></label>
+          <div className="form-grid"><label>판매 가격<input name="price" inputMode="numeric" placeholder="예: 180000" required /></label><label>거래 지역<input name="location" placeholder="예: 서울 성동구" required /></label></div>
+          <label>장비 설명<textarea name="description" rows={4} placeholder="사용 횟수, 보관 방법, 구성품을 적어주세요." required /></label>
+          <label className="check-label"><input type="checkbox" required /> 결함과 누락 구성품을 빠짐없이 고지했습니다.</label>
+          <button className="primary-action" type="submit">장비 등록하기</button>
+        </form>
+      );
+    }
+
+    if (panel === "favorites" || panel === "gear") {
+      const items = panel === "favorites" ? listingItems.filter((item) => favorites.has(item.id)) : listingItems;
+      return items.length ? (
+        <div className="panel-gear-list">
+          {items.map((item) => (
+            <article key={item.id}>
+              <img src={item.image} alt="" />
+              <div><span>{item.category} · {item.condition}</span><h3>{item.title}</h3><strong>{item.price}</strong><small>{item.location} · {item.time}</small></div>
+              <div className="panel-row-actions"><button type="button" onClick={() => { setPanel(null); setSelectedGear(item); }}>상세보기</button><button type="button" onClick={() => toggleFavorite(item.id)}>{favorites.has(item.id) ? "찜 해제" : "찜하기"}</button></div>
+            </article>
+          ))}
+        </div>
+      ) : <div className="panel-empty"><span>♡</span><h3>아직 찜한 장비가 없어요.</h3><button type="button" onClick={() => setPanel("gear")}>장비 둘러보기</button></div>;
+    }
+
+    if (panel === "logs") {
+      return (
+        <div className="logs-panel">
+          <div className="logs-tabs"><button className="active" type="button">필드노트</button><button type="button" onClick={() => setPanel("question")}>+ 질문 작성</button></div>
+          <div className="panel-note-list">{fieldNotes.map((note) => <button type="button" key={note.title} onClick={() => { setPanel(null); setSelectedNote(note); }}><img src={note.image} alt="" /><span><small>{note.type}</small><b>{note.title}</b><p>{note.copy}</p></span></button>)}</div>
+          <div className="my-questions"><h3>최근 캠핑 Q&A</h3>{questions.map((question, index) => <div key={`${question}-${index}`}><span>Q</span><p>{question}</p><small>{index === 0 ? "답변을 기다리는 중" : "답변 18 · 채택 완료"}</small></div>)}</div>
+        </div>
+      );
+    }
+
+    if (panel === "question") {
+      return <form className="service-form" onSubmit={submitQuestion}><p className="panel-lead">상황을 구체적으로 적을수록 경험 있는 캠퍼에게 좋은 답변을 받을 수 있어요.</p><label>캠핑 조건<input name="context" placeholder="예: 2인, 주말 오토캠핑, 경차" /></label><label>질문<textarea name="question" rows={6} placeholder="궁금한 점을 자세히 적어주세요." required /></label><button className="primary-action" type="submit">질문 등록하기</button></form>;
+    }
+
+    if (panel === "chat") {
+      return (
+        <div className="chat-panel">
+          {chatGear && <div className="chat-product"><img src={chatGear.image} alt="" /><p><b>{chatGear.title}</b><span>{chatGear.price} · {chatGear.condition}</span></p></div>}
+          <div className="chat-messages">{messages.map((message, index) => <p className={index === 0 ? "received" : "sent"} key={`${message}-${index}`}>{message}</p>)}</div>
+          <form className="chat-form" onSubmit={submitChat}><label className="sr-only" htmlFor="chat-message">메시지</label><input id="chat-message" name="message" placeholder="거래 가능 여부를 물어보세요" autoComplete="off" /><button type="submit">보내기</button></form>
+        </div>
+      );
+    }
+
+    if (panel === "safety") {
+      return <div className="info-panel"><p className="panel-lead">사람, 장비, 거래 과정의 증거를 함께 확인해 분쟁을 줄입니다.</p><div className="info-steps"><div><span>01</span><h3>상태표 확인</h3><p>품목별 필수 사진, 작동 상태, 수선과 누락 정보를 확인합니다.</p></div><div><span>02</span><h3>안전결제</h3><p>결제와 배송 정보를 플랫폼 안에 남기고 수령 전까지 보호합니다.</p></div><div><span>03</span><h3>수령 체크</h3><p>등록된 상태표와 실제 장비를 비교한 뒤 거래를 확정합니다.</p></div></div><div className="notice-box">화기·배터리·연료 장비는 제조사 지침과 운송 규정을 우선 확인해주세요.</div></div>;
+    }
+
+    if (panel === "guide") {
+      return <div className="info-panel"><p className="panel-lead">모델 찾기부터 거래 완료까지 평균 3분 등록 흐름입니다.</p><ol className="guide-list"><li><b>모델 선택</b><span>브랜드와 모델을 찾으면 기본 규격이 자동 입력됩니다.</span></li><li><b>상태와 구성품 기록</b><span>안내된 각도의 사진과 품목별 상태를 체크합니다.</span></li><li><b>가격·거래 방법 설정</b><span>유사 매물을 참고해 가격과 직거래·택배 여부를 정합니다.</span></li><li><b>문의와 인수</b><span>플랫폼 채팅과 인수 체크로 증빙을 남깁니다.</span></li></ol><button className="primary-action" type="button" onClick={() => setPanel("sell")}>판매 등록 시작</button></div>;
+    }
+
+    if (panel === "faq") {
+      return <div className="faq-list">{[["안전결제는 어떻게 진행되나요?", "구매자가 결제하면 수령 확인 전까지 결제 금액을 보호하고, 거래 확정 후 판매자에게 전달합니다."],["대형 텐트도 택배 거래할 수 있나요?", "가능하지만 파손 위험과 운임을 고려해 가까운 지역 직거래를 우선 권장합니다."],["장비 패스포트는 누가 작성하나요?", "모델 기본 정보는 캠프루프가 제공하고, 개별 장비의 상태와 이력은 판매자가 증빙과 함께 작성합니다."],["문제가 생기면 어떻게 하나요?", "채팅, 상태표, 사진, 배송 기록을 보존한 뒤 거래 상세에서 문제를 신고할 수 있습니다."]].map(([q,a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div>;
+    }
+
+    if (panel === "contact") {
+      return <form className="service-form" onSubmit={submitContact}><label>문의 유형<select name="type"><option>거래 문의</option><option>신고·분쟁</option><option>서비스 제안</option><option>기타</option></select></label><label>이메일<input name="email" type="email" placeholder="답변받을 이메일" required /></label><label>문의 내용<textarea name="message" rows={7} placeholder="문의 내용을 자세히 입력해주세요." required /></label><button className="primary-action" type="submit">문의 접수하기</button></form>;
+    }
+
+    if (panel === "notices") {
+      return <div className="notice-list"><article><time>2026.08.11</time><h3>캠프루프 로컬 베타를 시작합니다</h3><p>캠핑 특화 장비 상태표와 커뮤니티 연결 기능을 먼저 선보입니다.</p></article><article><time>2026.08.08</time><h3>안전거래 운영 원칙 안내</h3><p>화기·배터리 등 고위험 장비의 등록과 거래 유의사항을 확인해주세요.</p></article><article><time>2026.08.01</time><h3>초기 카테고리 운영 안내</h3><p>텐트·타프, 테이블·체어, 침낭·매트, 조명, 키친부터 시작합니다.</p></article></div>;
+    }
+
+    if (panel === "policy") {
+      return <div className="info-panel prose-panel"><h3>안전과 신뢰를 우선합니다</h3><p>불법·위조·리콜 미조치 품목과 안전성이 훼손된 개조 장비는 등록할 수 없습니다. 반복적인 허위 상태 고지, 외부 결제 유도, 상업성 스팸은 이용이 제한됩니다.</p><h3>커뮤니티 이해관계를 표시합니다</h3><p>협찬, 제품 제공, 판매자 이해관계가 있는 게시물은 반드시 표시해야 합니다.</p><h3>분쟁은 플랫폼 증빙을 기준으로 합니다</h3><p>상태표, 사진, 채팅, 결제와 배송 기록을 우선 확인해 일관된 기준으로 처리합니다.</p></div>;
+    }
+
+    if (panel === "terms" || panel === "privacy") {
+      return <div className="info-panel prose-panel"><p className="document-date">시행일 2026. 08. 11</p>{panel === "terms" ? <><h3>서비스 이용</h3><p>캠프루프는 캠핑 장비의 거래 정보와 커뮤니티 공간을 제공합니다. 이용자는 정확한 상품 정보와 거래 조건을 제공해야 합니다.</p><h3>거래 책임</h3><p>플랫폼 안에 남은 상태표와 거래 기록을 기준으로 분쟁을 지원하며, 금지 품목과 외부 결제 유도는 제한합니다.</p><h3>콘텐츠</h3><p>이용자가 작성한 필드노트와 답변의 권리는 작성자에게 있으며, 서비스 운영과 노출을 위해 필요한 범위에서 사용됩니다.</p></> : <><h3>수집 항목</h3><p>로그인 정보, 거래·채팅 기록, 서비스 이용 기록을 서비스 제공과 안전 관리에 필요한 범위에서 처리합니다.</p><h3>이용 목적</h3><p>회원 식별, 거래 지원, 분쟁 처리, 서비스 개선과 보안 목적으로 사용합니다.</p><h3>보관과 삭제</h3><p>법령상 보관 의무가 있는 정보를 제외하고 목적 달성 또는 회원 탈퇴 후 안전하게 삭제합니다.</p></>}</div>;
+    }
+
+    return null;
+  }
+
   return (
     <main id="top">
       <header className="site-header">
@@ -246,21 +490,21 @@ export default function Home() {
               className="icon-button"
               type="button"
               aria-label="찜 목록"
-              onClick={() => showToast(`찜한 장비가 ${favorites.size}개 있어요.`)}
+              onClick={() => openPanel("favorites")}
             >
               ♡<span className="count-badge">{favorites.size}</span>
             </button>
             <button
               className="login-button"
               type="button"
-              onClick={() => showToast("로그인 기능은 다음 단계에서 연결할 수 있어요.")}
+              onClick={() => openPanel(profileName ? "profile" : "login")}
             >
-              로그인
+              {profileName ? `${profileName}님` : "로그인"}
             </button>
             <button
               className="sell-button"
               type="button"
-              onClick={() => showToast("판매 등록을 시작할 준비가 됐어요.")}
+              onClick={() => openPanel("sell")}
             >
               + 장비 팔기
             </button>
@@ -339,7 +583,7 @@ export default function Home() {
             <span className="section-kicker">BROWSE BY GEAR</span>
             <h2 id="category-title">어떤 장비를 찾으세요?</h2>
           </div>
-          <a href="#gear" className="text-link">전체 장비 보기 →</a>
+          <button type="button" className="text-link link-button" onClick={() => openPanel("gear")}>전체 장비 보기 →</button>
         </div>
         <div className="category-grid">
           {categories.slice(1).map((category) => (
@@ -448,7 +692,7 @@ export default function Home() {
             <li><span>02</span><div><b>구성품과 관리 이력</b><small>누락품, 세척, 수선과 부품 교체를 한눈에.</small></div></li>
             <li><span>03</span><div><b>캠퍼들의 실사용 기록</b><small>날씨와 인원이 담긴 세팅·후기를 함께 확인.</small></div></li>
           </ul>
-          <a className="outline-link" href="#community">안심거래 방식 알아보기 <span>→</span></a>
+          <button className="outline-link outline-button" type="button" onClick={() => openPanel("safety")}>안심거래 방식 알아보기 <span>→</span></button>
         </div>
 
         <div className="passport-panel">
@@ -499,11 +743,20 @@ export default function Home() {
             <h2 id="community-title">먼저 써본 캠퍼의 이야기</h2>
             <p>장비 스펙에는 없는 진짜 사용 경험을 만나보세요.</p>
           </div>
-          <a href="#community" className="text-link" onClick={(event) => { event.preventDefault(); showToast("새 필드노트가 매일 업데이트돼요."); }}>캠핑로그 전체보기 →</a>
+          <button type="button" className="text-link link-button" onClick={() => openPanel("logs")}>캠핑로그 전체보기 →</button>
         </div>
         <div className="community-grid">
           {fieldNotes.map((note, index) => (
-            <article className={`note-card ${index === 0 ? "featured" : ""}`} key={note.title}>
+            <article
+              className={`note-card ${index === 0 ? "featured" : ""}`}
+              key={note.title}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedNote(note)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") setSelectedNote(note);
+              }}
+            >
               <img src={note.image} alt="" />
               <div className="note-overlay" />
               <div className="note-content">
@@ -519,12 +772,12 @@ export default function Home() {
           <div className="question-icon" aria-hidden="true">?</div>
           <div>
             <span>무엇이든 물어보세요</span>
-            <h3>“2인 오토캠핑, 첫 텐트는 어떤 게 좋을까요?”</h3>
+            <h3>“{questions[0]}”</h3>
           </div>
           <div className="answer-avatars" aria-label="답변한 캠퍼 18명">
             <span>캠</span><span>핑</span><span>고</span><b>+15</b>
           </div>
-          <button type="button" onClick={() => showToast("질문 작성 화면은 다음 단계에서 연결할 수 있어요.")}>질문하기</button>
+          <button type="button" onClick={() => openPanel("question")}>질문하기</button>
         </div>
       </section>
 
@@ -535,25 +788,25 @@ export default function Home() {
           <h2>잠들어 있는 장비를<br />다음 캠핑으로 보내주세요.</h2>
           <p>모델만 찾으면 상태표가 자동으로 준비돼요. 평균 3분이면 충분합니다.</p>
         </div>
-        <button type="button" onClick={() => showToast("장비 모델 찾기를 시작할 준비가 됐어요.")}>내 장비 판매하기 <span>→</span></button>
+        <button type="button" onClick={() => openPanel("sell")}>내 장비 판매하기 <span>→</span></button>
       </section>
 
       <footer className="site-footer">
         <div className="footer-main">
           <div className="footer-brand"><Logo /><p>좋은 장비가 다음 캠퍼에게,<br />좋은 경험이 다음 캠핑으로.</p></div>
-          <div className="footer-links"><b>서비스</b><a href="#gear">중고장비</a><a href="#passport">장비 패스포트</a><a href="#community">캠핑로그</a></div>
-          <div className="footer-links"><b>이용안내</b><a href="#passport">안심거래</a><a href="#passport">판매 가이드</a><a href="#top">운영정책</a></div>
-          <div className="footer-links"><b>고객지원</b><a href="#community">자주 묻는 질문</a><a href="#community">문의하기</a><a href="#top">공지사항</a></div>
+          <div className="footer-links"><b>서비스</b><button type="button" onClick={() => openPanel("gear")}>중고장비</button><button type="button" onClick={() => openPanel("safety")}>장비 패스포트</button><button type="button" onClick={() => openPanel("logs")}>캠핑로그</button></div>
+          <div className="footer-links"><b>이용안내</b><button type="button" onClick={() => openPanel("safety")}>안심거래</button><button type="button" onClick={() => openPanel("guide")}>판매 가이드</button><button type="button" onClick={() => openPanel("policy")}>운영정책</button></div>
+          <div className="footer-links"><b>고객지원</b><button type="button" onClick={() => openPanel("faq")}>자주 묻는 질문</button><button type="button" onClick={() => openPanel("contact")}>문의하기</button><button type="button" onClick={() => openPanel("notices")}>공지사항</button></div>
         </div>
-        <div className="footer-bottom"><span>© 2026 CampLoop. All rights reserved.</span><span>이용약관 · 개인정보처리방침</span></div>
+        <div className="footer-bottom"><span>© 2026 CampLoop. All rights reserved.</span><span><button type="button" onClick={() => openPanel("terms")}>이용약관</button> · <button type="button" onClick={() => openPanel("privacy")}>개인정보처리방침</button></span></div>
       </footer>
 
       <nav className="mobile-nav" aria-label="모바일 주요 메뉴">
         <a href="#top"><span>⌂</span>홈</a>
         <a href="#gear"><span>⌕</span>장비찾기</a>
-        <button type="button" onClick={() => showToast("장비 판매 등록을 시작해요.")}><span>＋</span>판매</button>
-        <a href="#community"><span>♧</span>캠핑로그</a>
-        <button type="button" onClick={() => showToast("로그인 후 내 캠프를 만들 수 있어요.")}><span>○</span>마이</button>
+        <button type="button" onClick={() => openPanel("sell")}><span>＋</span>판매</button>
+        <button type="button" onClick={() => openPanel("logs")}><span>♧</span>캠핑로그</button>
+        <button type="button" onClick={() => openPanel(profileName ? "profile" : "login")}><span>○</span>마이</button>
       </nav>
 
       {selectedGear && (
@@ -579,9 +832,36 @@ export default function Home() {
               <div className="seller-row"><span>{selectedGear.seller.charAt(0)}</span><p><b>{selectedGear.seller}</b><small>{selectedGear.sellerScore} · {selectedGear.location}</small></p></div>
               <div className="modal-actions">
                 <button type="button" className={favorites.has(selectedGear.id) ? "liked" : ""} onClick={() => toggleFavorite(selectedGear.id)}>{favorites.has(selectedGear.id) ? "♥ 찜했어요" : "♡ 찜하기"}</button>
-                <button type="button" onClick={() => showToast("판매자에게 보낼 첫 메시지를 준비했어요.")}>판매자와 대화하기</button>
+                <button type="button" onClick={() => startChat(selectedGear)}>판매자와 대화하기</button>
               </div>
             </div>
+          </section>
+        </div>
+      )}
+
+      {selectedNote && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelectedNote(null)}>
+          <article className="story-modal" role="dialog" aria-modal="true" aria-labelledby="story-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="modal-close" type="button" aria-label="닫기" onClick={() => setSelectedNote(null)}>×</button>
+            <img src={selectedNote.image} alt="" />
+            <div>
+              <span className="gear-category">{selectedNote.type}</span>
+              <h2 id="story-title">{selectedNote.title}</h2>
+              <p>{selectedNote.copy}</p>
+              <div className="story-meta">{selectedNote.meta}</div>
+              <h3>필드에서 확인한 핵심 포인트</h3>
+              <ul><li>날씨와 인원에 맞춰 장비의 우선순위를 정했어요.</li><li>사진 속 장비를 태그해 같은 조합의 매물을 바로 찾을 수 있어요.</li><li>사용 후 관리 방법까지 기록해 다음 캠핑에도 활용합니다.</li></ul>
+              <button className="primary-action" type="button" onClick={() => { setSelectedNote(null); openPanel("gear"); }}>관련 장비 보기</button>
+            </div>
+          </article>
+        </div>
+      )}
+
+      {panel && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setPanel(null)}>
+          <section className="service-modal" role="dialog" aria-modal="true" aria-labelledby="service-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+            <header><div><span className="section-kicker">CAMPLOOP SERVICE</span><h2 id="service-modal-title">{panelTitles[panel]}</h2></div><button type="button" aria-label="닫기" onClick={() => setPanel(null)}>×</button></header>
+            <div className="service-modal-body">{renderPanelContent()}</div>
           </section>
         </div>
       )}
