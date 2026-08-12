@@ -147,7 +147,41 @@ type ListingPhoto = {
   id: string;
   name: string;
   url: string;
+  file: File;
 };
+
+type PersistedGearListing = {
+  id: number;
+  title: string;
+  category: string;
+  price: number;
+  location: string;
+  condition: string;
+  image_url: string;
+  tags: string[] | null;
+  passport: number;
+  seller_name: string;
+  description: string;
+  created_at: string;
+};
+
+function persistedListingToGear(row: PersistedGearListing): Gear {
+  return {
+    id: Number(row.id),
+    title: row.title,
+    category: row.category,
+    price: `${Number(row.price).toLocaleString("ko-KR")}원`,
+    location: row.location,
+    time: new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric" }).format(new Date(row.created_at)),
+    condition: row.condition,
+    image: row.image_url,
+    tags: row.tags ?? [],
+    passport: row.passport,
+    seller: row.seller_name,
+    sellerScore: "등록 판매자",
+    description: row.description,
+  };
+}
 
 const passportChecklist = [
   { id: "skin", title: "스킨·메쉬", detail: "오염, 찢김, 곰팡이를 확인했어요." },
@@ -362,6 +396,7 @@ export default function Home() {
   const [listingCondition, setListingCondition] = useState("A급");
   const [listingCategory, setListingCategory] = useState("텐트");
   const [customListingCategory, setCustomListingCategory] = useState("");
+  const [listingSubmitting, setListingSubmitting] = useState(false);
   const [activeMobileTab, setActiveMobileTab] = useState("home");
   const [paymentGear, setPaymentGear] = useState<Gear | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -420,6 +455,29 @@ export default function Home() {
     return () => {
       active = false;
       subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    void supabase
+      .from("gear_listings")
+      .select("id,title,category,price,location,condition,image_url,tags,passport,seller_name,description,created_at")
+      .eq("status", "ACTIVE")
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          console.error("장비 목록을 불러오지 못했습니다.", error);
+          return;
+        }
+        const savedListings = (data ?? []).map((row) => persistedListingToGear(row as PersistedGearListing));
+        setListingItems([...savedListings, ...gearItems]);
+      });
+
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -654,8 +712,9 @@ export default function Home() {
     }
   }
 
-  function submitListing(event: FormEvent<HTMLFormElement>) {
+  async function submitListing(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (listingSubmitting) return;
     const resolvedCategory = listingCategory === "기타" ? customListingCategory.trim() : listingCategory;
     if (!resolvedCategory) {
       showToast("기타 카테고리 이름을 직접 입력해 주세요.");
@@ -671,50 +730,99 @@ export default function Home() {
     }
     const data = new FormData(event.currentTarget);
     const numericPrice = String(data.get("price") || "0").replace(/[^0-9]/g, "");
+    const price = Number(numericPrice || 0);
+    if (price < 100 || price > 10_000_000) {
+      showToast("판매 가격은 100원부터 1,000만원까지 입력해 주세요.");
+      return;
+    }
     const usageCount = String(data.get("usageCount") || "사용 횟수 미입력");
-    const newItem: Gear = {
-      id: Date.now() % 2_000_000_000,
-      title: String(data.get("title") || "새 캠핑 장비"),
-      category: resolvedCategory,
-      price: `${Number(numericPrice || 0).toLocaleString("ko-KR")}원`,
-      location: String(data.get("location") || "서울 성동구"),
-      time: "방금 전",
-      condition: String(data.get("condition") || "상태 확인 중"),
-      image: listingPhotos[0].url,
-      tags: [usageCount, "상태표 6/6", "직거래"],
-      passport: 96,
-      seller: profileName || "새 캠퍼",
-      sellerScore: "첫 거래",
-      description: String(data.get("description") || "꼼꼼하게 관리한 캠핑 장비입니다."),
-    };
-    setListingItems((items) => [newItem, ...items]);
-    setPostcode("");
-    setBaseAddress("");
-    setAddressDetail("");
-    setTradeLocation("");
-    setListingPhotos([]);
-    setPassportChecks(new Set());
-    setListingCondition("A급");
-    setListingCategory("텐트");
-    setCustomListingCategory("");
-    setActiveCategory("전체");
-    setQuery("");
-    setPanel(null);
-    showToast("장비가 등록됐어요. 새 장비 목록에서 확인해보세요.");
-    window.setTimeout(() => document.querySelector("#gear")?.scrollIntoView({ behavior: "smooth" }), 80);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user) {
+      setPanel("login");
+      showToast("장비를 안전하게 저장하려면 Google 로그인이 필요해요.");
+      return;
+    }
+
+    const uploadedPaths: string[] = [];
+    setListingSubmitting(true);
+    try {
+      for (const photo of listingPhotos) {
+        const extension = photo.file.type === "image/png" ? "png" : photo.file.type === "image/webp" ? "webp" : "jpg";
+        const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from("gear-listings")
+          .upload(path, photo.file, { cacheControl: "3600", contentType: photo.file.type, upsert: false });
+        if (uploadError) throw uploadError;
+        uploadedPaths.push(path);
+      }
+
+      const { data: publicImage } = supabase.storage.from("gear-listings").getPublicUrl(uploadedPaths[0]);
+      const title = String(data.get("title") || "새 캠핑 장비").trim();
+      const description = String(data.get("description") || "꼼꼼하게 관리한 캠핑 장비입니다.").trim();
+      const tags = [usageCount, "상태표 6/6", "직거래"];
+      const { data: savedListing, error: insertError } = await supabase
+        .from("gear_listings")
+        .insert({
+          user_id: user.id,
+          title,
+          category: resolvedCategory,
+          price,
+          location: String(data.get("location") || "").trim(),
+          condition: listingCondition,
+          image_url: publicImage.publicUrl,
+          image_paths: uploadedPaths,
+          usage_count: usageCount,
+          tags,
+          passport: 96,
+          seller_name: profileName || String(user.user_metadata?.full_name || user.email?.split("@")[0] || "새 캠퍼"),
+          description,
+        })
+        .select("id,title,category,price,location,condition,image_url,tags,passport,seller_name,description,created_at")
+        .single();
+      if (insertError) throw insertError;
+
+      const newItem = persistedListingToGear(savedListing as PersistedGearListing);
+      setListingItems((items) => [newItem, ...items]);
+      listingPhotos.forEach((photo) => URL.revokeObjectURL(photo.url));
+      setPostcode("");
+      setBaseAddress("");
+      setAddressDetail("");
+      setTradeLocation("");
+      setListingPhotos([]);
+      setPassportChecks(new Set());
+      setListingCondition("A급");
+      setListingCategory("텐트");
+      setCustomListingCategory("");
+      setActiveCategory("전체");
+      setQuery("");
+      setPanel(null);
+      showToast("장비가 안전하게 저장됐어요. 새로고침 후에도 유지됩니다.");
+      window.setTimeout(() => document.querySelector("#gear")?.scrollIntoView({ behavior: "smooth" }), 80);
+    } catch (error) {
+      if (uploadedPaths.length) {
+        await supabase.storage.from("gear-listings").remove(uploadedPaths);
+      }
+      console.error("장비 등록에 실패했습니다.", error);
+      showToast("장비를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setListingSubmitting(false);
+    }
   }
 
   function addListingPhotos(event: ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(event.currentTarget.files ?? []).filter((file) =>
-      file.type.startsWith("image/"),
-    );
+    const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+    const files = Array.from(event.currentTarget.files ?? []);
+    const selected = files.filter((file) => allowedTypes.has(file.type) && file.size <= 10 * 1024 * 1024);
     const availableSlots = Math.max(0, 6 - listingPhotos.length);
     const nextPhotos = selected.slice(0, availableSlots).map((file) => ({
       id: crypto.randomUUID(),
       name: file.name,
       url: URL.createObjectURL(file),
+      file,
     }));
     if (nextPhotos.length) setListingPhotos((current) => [...current, ...nextPhotos]);
+    if (selected.length !== files.length) showToast("JPG, PNG, WEBP 사진만 장당 10MB까지 등록할 수 있어요.");
     if (selected.length > availableSlots) showToast("사진은 최대 6장까지 등록할 수 있어요.");
     event.currentTarget.value = "";
   }
@@ -878,7 +986,7 @@ export default function Home() {
               <em>{listingPhotos.length}/6</em>
             </div>
             <label className="photo-picker">
-              <input type="file" accept="image/*" multiple onChange={addListingPhotos} aria-label="장비 사진 선택" />
+              <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={addListingPhotos} aria-label="장비 사진 선택" />
               <span aria-hidden="true">＋</span>
               <strong>사진 추가하기</strong>
               <small>정면, 뒷면, 구성품과 사용 흔적을 선명하게 보여주세요.</small>
@@ -927,7 +1035,9 @@ export default function Home() {
             </div>
           </fieldset>
           <label className="check-label"><input type="checkbox" required /> 결함과 누락 구성품을 빠짐없이 고지했습니다.</label>
-          <button className="primary-action" type="submit">장비 등록하기</button>
+          <button className="primary-action" type="submit" disabled={listingSubmitting}>
+            {listingSubmitting ? "사진과 장비를 저장하는 중…" : "장비 등록하기"}
+          </button>
           {postcodeOpen && (
             <div className="postcode-backdrop" role="presentation" onMouseDown={() => setPostcodeOpen(false)}>
               <section className="postcode-layer" role="dialog" aria-modal="true" aria-labelledby="postcode-title" onMouseDown={(event) => event.stopPropagation()}>
