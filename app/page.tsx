@@ -39,6 +39,13 @@ async function paymentErrorMessage(error: unknown, fallback: string) {
       }
     }
   }
+  if (error && typeof error === "object" && "code" in error) {
+    const code = String(error.code || "");
+    if (code === "USER_CANCEL" || code === "PAY_PROCESS_CANCELED") return "토스 테스트 결제를 취소했어요.";
+    if (code === "INVALID_METADATA") return "결제 주문 정보 형식을 확인하지 못했어요. 다시 시도해 주세요.";
+    if (code === "NETWORK_ERROR") return "결제창 연결이 원활하지 않아요. 네트워크를 확인한 뒤 다시 시도해 주세요.";
+    if (code === "UNKNOWN") return "결제창에서 주문 정보를 처리하지 못했어요. 창을 닫고 다시 시도해 주세요.";
+  }
   if (error && typeof error === "object" && "message" in error) {
     return String(error.message).slice(0, 160);
   }
@@ -402,6 +409,7 @@ export default function Home() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [paymentError, setPaymentError] = useState("");
+  const paymentWindowRef = useRef<{ destroy: () => void } | null>(null);
   const postcodeLayerRef = useRef<HTMLDivElement>(null);
   const addressDetailRef = useRef<HTMLInputElement>(null);
 
@@ -620,6 +628,12 @@ export default function Home() {
     setPaymentGear(gear);
   }
 
+  function closeTestPayment() {
+    paymentWindowRef.current?.destroy();
+    paymentWindowRef.current = null;
+    setPaymentGear(null);
+  }
+
   async function startTestPayment() {
     if (!paymentGear || paymentLoading) return;
     const { data: sessionData } = await supabase.auth.getSession();
@@ -650,7 +664,10 @@ export default function Home() {
       const widgets = tossPayments.widgets({ customerKey: session.user.id });
       const baseUrl = `${window.location.origin}${window.location.pathname}`;
       await widgets.setAmount({ currency: data.currency, value: data.amount });
+      paymentWindowRef.current?.destroy();
+      paymentWindowRef.current = null;
       const paymentWindow = await widgets.renderPaymentWindow();
+      paymentWindowRef.current = paymentWindow;
 
       paymentWindow.on("paymentRequest", async () => {
         setPaymentLoading(true);
@@ -664,18 +681,21 @@ export default function Home() {
             customerEmail: session.user.email,
             customerName: profileName || undefined,
             windowTarget: "self",
-            metadata: { gearId: paymentGear.id },
           });
         } catch (error) {
+          paymentWindow.destroy();
+          if (paymentWindowRef.current === paymentWindow) paymentWindowRef.current = null;
           const message = await paymentErrorMessage(error, "토스 테스트 결제 요청을 처리하지 못했습니다.");
-          setPaymentError(message.includes("USER_CANCEL") ? "토스 테스트 결제를 취소했어요." : message);
+          setPaymentError(message);
           setPaymentLoading(false);
         }
       });
       setPaymentLoading(false);
     } catch (error) {
+      paymentWindowRef.current?.destroy();
+      paymentWindowRef.current = null;
       const message = await paymentErrorMessage(error, "토스 테스트 결제창을 열지 못했습니다.");
-      setPaymentError(message.includes("USER_CANCEL") ? "테스트 결제를 취소했어요." : message);
+      setPaymentError(message);
       setPaymentLoading(false);
     }
   }
@@ -1499,9 +1519,9 @@ export default function Home() {
       )}
 
       {paymentGear && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !paymentLoading && setPaymentGear(null)}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !paymentLoading && closeTestPayment()}>
           <section className="payment-modal" role="dialog" aria-modal="true" aria-labelledby="payment-title">
-            <button className="modal-close" type="button" aria-label="닫기" disabled={paymentLoading} onClick={() => setPaymentGear(null)}>×</button>
+            <button className="modal-close" type="button" aria-label="닫기" disabled={paymentLoading} onClick={closeTestPayment}>×</button>
             <span className="test-mode-badge">TEST MODE · 실제 출금 없음</span>
             <h2 id="payment-title">토스페이먼츠 테스트 결제</h2>
             <p className="payment-intro">실제 돈은 결제되지 않습니다. 카드·간편결제 화면과 주문 승인 흐름을 안전하게 확인해보세요.</p>
@@ -1515,7 +1535,7 @@ export default function Home() {
               <li>테스트 결제 후 주문 상태가 자동으로 기록됩니다.</li>
             </ul>
             <button className="toss-confirm-button" type="button" disabled={paymentLoading} onClick={startTestPayment}>{paymentLoading ? "테스트 주문 준비 중…" : `${paymentGear.price} 테스트 결제하기`}</button>
-            <button className="payment-cancel-button" type="button" disabled={paymentLoading} onClick={() => setPaymentGear(null)}>다음에 할게요</button>
+            <button className="payment-cancel-button" type="button" disabled={paymentLoading} onClick={closeTestPayment}>다음에 할게요</button>
           </section>
         </div>
       )}
