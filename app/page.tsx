@@ -736,6 +736,15 @@ export default function Home() {
       return;
     }
     const usageCount = String(data.get("usageCount") || "사용 횟수 미입력");
+    const publicLocation = [
+      tradeLocation,
+      String(data.get("location") || ""),
+      baseAddress.split(/\s+/).slice(0, 2).join(" "),
+    ].map((value) => value.trim()).find(Boolean) ?? "";
+    if (!publicLocation) {
+      showToast("카카오 주소 검색으로 거래 지역을 선택해 주세요.");
+      return;
+    }
     const { data: sessionData } = await supabase.auth.getSession();
     const user = sessionData.session?.user;
     if (!user) {
@@ -768,7 +777,7 @@ export default function Home() {
           title,
           category: resolvedCategory,
           price,
-          location: String(data.get("location") || "").trim(),
+          location: publicLocation,
           condition: listingCondition,
           image_url: publicImage.publicUrl,
           image_paths: uploadedPaths,
@@ -804,7 +813,12 @@ export default function Home() {
         await supabase.storage.from("gear-listings").remove(uploadedPaths);
       }
       console.error("장비 등록에 실패했습니다.", error);
-      showToast("장비를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.");
+      const message = error instanceof Error ? error.message : "";
+      showToast(
+        message.includes("gear_listings_location_check")
+          ? "거래 지역을 확인하지 못했어요. 카카오 주소 검색을 다시 진행해 주세요."
+          : "장비를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.",
+      );
     } finally {
       setListingSubmitting(false);
     }
