@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import { House, Plus, Search, TentTree, UserRound } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 type KakaoPostcodeData = {
@@ -291,6 +292,7 @@ export default function Home() {
   const [postcodeOpen, setPostcodeOpen] = useState(false);
   const [listingPhotos, setListingPhotos] = useState<ListingPhoto[]>([]);
   const [passportChecks, setPassportChecks] = useState<Set<string>>(new Set());
+  const [activeMobileTab, setActiveMobileTab] = useState("home");
   const postcodeLayerRef = useRef<HTMLDivElement>(null);
   const addressDetailRef = useRef<HTMLInputElement>(null);
 
@@ -1087,11 +1089,11 @@ export default function Home() {
       </footer>
 
       <nav className="mobile-nav" aria-label="모바일 주요 메뉴">
-        <a href="#top"><span>⌂</span>홈</a>
-        <a href="#gear"><span>⌕</span>장비찾기</a>
-        <button type="button" onClick={() => openPanel("sell")}><span>＋</span>판매</button>
-        <button type="button" onClick={() => openPanel("logs")}><span>♧</span>캠핑로그</button>
-        <button type="button" onClick={() => openPanel(profileName ? "profile" : "login")}><span>○</span>마이</button>
+        <a className={activeMobileTab === "home" ? "is-active" : ""} href="#top" aria-current={activeMobileTab === "home" ? "page" : undefined} onClick={() => setActiveMobileTab("home")}><span className="mobile-nav-icon"><House aria-hidden="true" /></span><span className="mobile-nav-label">홈</span></a>
+        <a className={activeMobileTab === "gear" ? "is-active" : ""} href="#gear" aria-current={activeMobileTab === "gear" ? "page" : undefined} onClick={() => setActiveMobileTab("gear")}><span className="mobile-nav-icon"><Search aria-hidden="true" /></span><span className="mobile-nav-label">장비찾기</span></a>
+        <button className={`mobile-sell${activeMobileTab === "sell" ? " is-active" : ""}`} type="button" aria-current={activeMobileTab === "sell" ? "page" : undefined} onClick={() => { setActiveMobileTab("sell"); openPanel("sell"); }}><span className="mobile-nav-icon"><Plus aria-hidden="true" /></span><span className="mobile-nav-label">판매</span></button>
+        <button className={activeMobileTab === "logs" ? "is-active" : ""} type="button" aria-current={activeMobileTab === "logs" ? "page" : undefined} onClick={() => { setActiveMobileTab("logs"); openPanel("logs"); }}><span className="mobile-nav-icon"><TentTree aria-hidden="true" /></span><span className="mobile-nav-label">캠핑로그</span></button>
+        <button className={activeMobileTab === "profile" ? "is-active" : ""} type="button" aria-current={activeMobileTab === "profile" ? "page" : undefined} onClick={() => { setActiveMobileTab("profile"); openPanel(profileName ? "profile" : "login"); }}><span className="mobile-nav-icon"><UserRound aria-hidden="true" /></span><span className="mobile-nav-label">마이</span></button>
       </nav>
 
       {selectedGear && (
