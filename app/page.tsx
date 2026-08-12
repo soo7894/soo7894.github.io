@@ -1,8 +1,71 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+
+type KakaoPostcodeData = {
+  zonecode: string;
+  address: string;
+  roadAddress: string;
+  jibunAddress: string;
+  sido: string;
+  sigungu: string;
+};
+
+type KakaoPostcodeConstructor = new (options: {
+  oncomplete: (data: KakaoPostcodeData) => void;
+  width?: string | number;
+  height?: string | number;
+}) => {
+  embed: (element: HTMLElement, options?: { autoClose?: boolean }) => void;
+};
+
+declare global {
+  interface Window {
+    kakao?: { Postcode?: KakaoPostcodeConstructor };
+    daum?: { Postcode?: KakaoPostcodeConstructor };
+  }
+}
+
+const KAKAO_POSTCODE_SCRIPT =
+  "https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+let postcodeLoader: Promise<KakaoPostcodeConstructor> | null = null;
+
+function loadKakaoPostcode() {
+  const available = window.kakao?.Postcode ?? window.daum?.Postcode;
+  if (available) return Promise.resolve(available);
+  if (postcodeLoader) return postcodeLoader;
+
+  postcodeLoader = new Promise<KakaoPostcodeConstructor>((resolve, reject) => {
+    const finish = () => {
+      const Postcode = window.kakao?.Postcode ?? window.daum?.Postcode;
+      if (Postcode) resolve(Postcode);
+      else reject(new Error("Kakao Postcode did not initialize."));
+    };
+    const fail = () => {
+      postcodeLoader = null;
+      reject(new Error("Kakao Postcode script failed to load."));
+    };
+    const existing = document.querySelector<HTMLScriptElement>(
+      "script[data-kakao-postcode]",
+    );
+    if (existing) {
+      existing.addEventListener("load", finish, { once: true });
+      existing.addEventListener("error", fail, { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = KAKAO_POSTCODE_SCRIPT;
+    script.async = true;
+    script.dataset.kakaoPostcode = "true";
+    script.addEventListener("load", finish, { once: true });
+    script.addEventListener("error", fail, { once: true });
+    document.head.appendChild(script);
+  });
+
+  return postcodeLoader;
+}
 
 type Gear = {
   id: number;
@@ -206,6 +269,13 @@ export default function Home() {
   const [messages, setMessages] = useState<string[]>([
     "안녕하세요! 장비 상태표 확인 후 궁금한 점을 남겨주세요.",
   ]);
+  const [postcode, setPostcode] = useState("");
+  const [baseAddress, setBaseAddress] = useState("");
+  const [addressDetail, setAddressDetail] = useState("");
+  const [tradeLocation, setTradeLocation] = useState("");
+  const [postcodeOpen, setPostcodeOpen] = useState(false);
+  const postcodeLayerRef = useRef<HTMLDivElement>(null);
+  const addressDetailRef = useRef<HTMLInputElement>(null);
 
   const filteredGear = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -338,6 +408,38 @@ export default function Home() {
     showToast("안전하게 로그아웃했어요.");
   }
 
+  async function openKakaoPostcode() {
+    setPostcodeOpen(true);
+    try {
+      const Postcode = await loadKakaoPostcode();
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      );
+      const target = postcodeLayerRef.current;
+      if (!target) throw new Error("Postcode layer is unavailable.");
+      target.replaceChildren();
+      new Postcode({
+        width: "100%",
+        height: "100%",
+        oncomplete: (data) => {
+          const selectedAddress =
+            data.roadAddress || data.jibunAddress || data.address;
+          const location =
+            [data.sido, data.sigungu].filter(Boolean).join(" ") ||
+            selectedAddress.split(" ").slice(0, 2).join(" ");
+          setPostcode(data.zonecode);
+          setBaseAddress(selectedAddress);
+          setTradeLocation(location);
+          setPostcodeOpen(false);
+          window.setTimeout(() => addressDetailRef.current?.focus(), 80);
+        },
+      }).embed(target, { autoClose: true });
+    } catch {
+      setPostcodeOpen(false);
+      showToast("주소 검색창을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+    }
+  }
+
   function submitListing(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -359,6 +461,10 @@ export default function Home() {
       description: String(data.get("description") || "꼼꼼하게 관리한 캠핑 장비입니다."),
     };
     setListingItems((items) => [newItem, ...items]);
+    setPostcode("");
+    setBaseAddress("");
+    setAddressDetail("");
+    setTradeLocation("");
     setActiveCategory("전체");
     setQuery("");
     setPanel(null);
@@ -458,10 +564,29 @@ export default function Home() {
             <label>상태<select name="condition" defaultValue="A급"><option>A급</option><option>사용감 적음</option><option>B+급</option><option>미사용급</option></select></label>
           </div>
           <label>장비명<input name="title" placeholder="브랜드와 모델명을 입력하세요" required /></label>
-          <div className="form-grid"><label>판매 가격<input name="price" inputMode="numeric" placeholder="예: 180000" required /></label><label>거래 지역<input name="location" placeholder="예: 서울 성동구" required /></label></div>
+          <label>판매 가격<input name="price" inputMode="numeric" placeholder="예: 180000" required /></label>
+          <fieldset className="address-field">
+            <legend>거래 주소</legend>
+            <div className="address-search-row">
+              <input name="postcode" value={postcode} placeholder="우편번호" readOnly required aria-label="우편번호" />
+              <button type="button" onClick={openKakaoPostcode}>카카오 주소 검색</button>
+            </div>
+            <input name="address" value={baseAddress} placeholder="주소 검색 버튼을 눌러주세요" readOnly required aria-label="기본 주소" />
+            <input ref={addressDetailRef} name="addressDetail" value={addressDetail} onChange={(event) => setAddressDetail(event.target.value)} placeholder="상세주소를 입력하세요 (선택)" aria-label="상세 주소" />
+            <input type="hidden" name="location" value={tradeLocation} />
+            <small>목록에는 시·구까지만 표시되고, 상세주소는 공개되지 않아요.</small>
+          </fieldset>
           <label>장비 설명<textarea name="description" rows={4} placeholder="사용 횟수, 보관 방법, 구성품을 적어주세요." required /></label>
           <label className="check-label"><input type="checkbox" required /> 결함과 누락 구성품을 빠짐없이 고지했습니다.</label>
           <button className="primary-action" type="submit">장비 등록하기</button>
+          {postcodeOpen && (
+            <div className="postcode-backdrop" role="presentation" onMouseDown={() => setPostcodeOpen(false)}>
+              <section className="postcode-layer" role="dialog" aria-modal="true" aria-labelledby="postcode-title" onMouseDown={(event) => event.stopPropagation()}>
+                <header><div><b id="postcode-title">카카오 주소 검색</b><small>도로명이나 건물명을 검색해 주세요.</small></div><button type="button" aria-label="주소 검색 닫기" onClick={() => setPostcodeOpen(false)}>×</button></header>
+                <div className="postcode-embed" ref={postcodeLayerRef} />
+              </section>
+            </div>
+          )}
         </form>
       );
     }

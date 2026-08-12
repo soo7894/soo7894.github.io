@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const projectRoot = fileURLToPath(new URL(".", import.meta.url));
-const pagesRoot = fileURLToPath(new URL("./pages", import.meta.url));
+const pagesRoot = fileURLToPath(new URL("./github-pages", import.meta.url));
 
 export default defineConfig({
   root: pagesRoot,
@@ -16,8 +16,8 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        home: fileURLToPath(new URL("./pages/index.html", import.meta.url)),
-        admin: fileURLToPath(new URL("./pages/admin/index.html", import.meta.url)),
+        home: fileURLToPath(new URL("./github-pages/index.html", import.meta.url)),
+        admin: fileURLToPath(new URL("./github-pages/admin/index.html", import.meta.url)),
       },
     },
   },
