@@ -1261,7 +1261,7 @@ export default function Home() {
             <p>상태 정보가 꼼꼼히 채워진 장비부터 보여드려요.</p>
           </div>
           <div className="filter-pills" aria-label="장비 카테고리 필터">
-            {categories.slice(0, 5).map((category) => (
+            {categories.map((category) => (
               <button
                 type="button"
                 key={category.name}
