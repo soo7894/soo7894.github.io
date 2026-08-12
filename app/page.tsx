@@ -680,7 +680,6 @@ export default function Home() {
             failUrl: `${baseUrl}?payment=fail`,
             customerEmail: session.user.email,
             customerName: profileName || undefined,
-            windowTarget: "self",
           });
         } catch (error) {
           paymentWindow.destroy();
