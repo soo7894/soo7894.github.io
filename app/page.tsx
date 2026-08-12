@@ -1373,7 +1373,14 @@ export default function Home() {
             {filteredGear.slice(0, 4).map((item) => (
               <article className="gear-card" key={item.id}>
                 <div className="gear-image-wrap">
-                  <img src={item.image} alt="" />
+                  <button
+                    type="button"
+                    className="gear-image-button"
+                    aria-label={`${item.title} 상세 내용 보기`}
+                    onClick={() => setSelectedGear(item)}
+                  >
+                    <img src={item.image} alt={`${item.title} 장비 사진`} />
+                  </button>
                   <span className="condition-badge">{item.condition}</span>
                   <button
                     type="button"
