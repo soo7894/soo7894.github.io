@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 
@@ -101,6 +101,21 @@ type Panel =
   | "terms"
   | "privacy"
   | null;
+
+type ListingPhoto = {
+  id: string;
+  name: string;
+  url: string;
+};
+
+const passportChecklist = [
+  { id: "skin", title: "스킨·메쉬", detail: "오염, 찢김, 곰팡이를 확인했어요." },
+  { id: "pole", title: "폴대", detail: "휨, 균열, 연결 상태를 확인했어요." },
+  { id: "zipper", title: "지퍼", detail: "모든 지퍼의 작동 상태를 확인했어요." },
+  { id: "waterproof", title: "누수", detail: "누수와 방수 코팅 상태를 확인했어요." },
+  { id: "parts", title: "구성품", detail: "팩, 로프 등 구성품 수량을 확인했어요." },
+  { id: "care", title: "관리", detail: "세척, 건조, 수선 이력을 확인했어요." },
+] as const;
 
 const gearItems: Gear[] = [
   {
@@ -274,6 +289,8 @@ export default function Home() {
   const [addressDetail, setAddressDetail] = useState("");
   const [tradeLocation, setTradeLocation] = useState("");
   const [postcodeOpen, setPostcodeOpen] = useState(false);
+  const [listingPhotos, setListingPhotos] = useState<ListingPhoto[]>([]);
+  const [passportChecks, setPassportChecks] = useState<Set<string>>(new Set());
   const postcodeLayerRef = useRef<HTMLDivElement>(null);
   const addressDetailRef = useRef<HTMLInputElement>(null);
 
@@ -442,6 +459,14 @@ export default function Home() {
 
   function submitListing(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!listingPhotos.length) {
+      showToast("장비 사진을 한 장 이상 등록해 주세요.");
+      return;
+    }
+    if (passportChecks.size !== passportChecklist.length) {
+      showToast("장비 패스포트 점검 항목을 모두 확인해 주세요.");
+      return;
+    }
     const data = new FormData(event.currentTarget);
     const numericPrice = String(data.get("price") || "0").replace(/[^0-9]/g, "");
     const newItem: Gear = {
@@ -452,10 +477,9 @@ export default function Home() {
       location: String(data.get("location") || "서울 성동구"),
       time: "방금 전",
       condition: String(data.get("condition") || "상태 확인 중"),
-      image:
-        "https://images.unsplash.com/photo-1504851149312-7a075b496cc7?auto=format&fit=crop&w=1200&q=85",
-      tags: ["신규 등록", "상태표 작성", "직거래"],
-      passport: 72,
+      image: listingPhotos[0].url,
+      tags: ["사진 등록", "상태표 6/6", "직거래"],
+      passport: 96,
       seller: profileName || "새 캠퍼",
       sellerScore: "첫 거래",
       description: String(data.get("description") || "꼼꼼하게 관리한 캠핑 장비입니다."),
@@ -465,11 +489,45 @@ export default function Home() {
     setBaseAddress("");
     setAddressDetail("");
     setTradeLocation("");
+    setListingPhotos([]);
+    setPassportChecks(new Set());
     setActiveCategory("전체");
     setQuery("");
     setPanel(null);
     showToast("장비가 등록됐어요. 새 장비 목록에서 확인해보세요.");
     window.setTimeout(() => document.querySelector("#gear")?.scrollIntoView({ behavior: "smooth" }), 80);
+  }
+
+  function addListingPhotos(event: ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.currentTarget.files ?? []).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+    const availableSlots = Math.max(0, 6 - listingPhotos.length);
+    const nextPhotos = selected.slice(0, availableSlots).map((file) => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      url: URL.createObjectURL(file),
+    }));
+    if (nextPhotos.length) setListingPhotos((current) => [...current, ...nextPhotos]);
+    if (selected.length > availableSlots) showToast("사진은 최대 6장까지 등록할 수 있어요.");
+    event.currentTarget.value = "";
+  }
+
+  function removeListingPhoto(id: string) {
+    setListingPhotos((current) => {
+      const target = current.find((photo) => photo.id === id);
+      if (target) URL.revokeObjectURL(target.url);
+      return current.filter((photo) => photo.id !== id);
+    });
+  }
+
+  function togglePassportCheck(id: string) {
+    setPassportChecks((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   function submitQuestion(event: FormEvent<HTMLFormElement>) {
@@ -565,6 +623,29 @@ export default function Home() {
           </div>
           <label>장비명<input name="title" placeholder="브랜드와 모델명을 입력하세요" required /></label>
           <label>판매 가격<input name="price" inputMode="numeric" placeholder="예: 180000" required /></label>
+          <fieldset className="listing-section photo-section">
+            <div className="listing-section-head">
+              <div><b><span>2</span> 장비 사진</b><small>첫 번째 사진이 목록의 대표 사진으로 보여요.</small></div>
+              <em>{listingPhotos.length}/6</em>
+            </div>
+            <label className="photo-picker">
+              <input type="file" accept="image/*" multiple onChange={addListingPhotos} aria-label="장비 사진 선택" />
+              <span aria-hidden="true">＋</span>
+              <strong>사진 추가하기</strong>
+              <small>정면, 뒷면, 구성품과 사용 흔적을 선명하게 보여주세요.</small>
+            </label>
+            {listingPhotos.length > 0 && (
+              <div className="photo-preview-grid" aria-label="등록할 장비 사진">
+                {listingPhotos.map((photo, index) => (
+                  <figure className="photo-preview" key={photo.id}>
+                    <img src={photo.url} alt={`${photo.name} 미리보기`} />
+                    {index === 0 && <figcaption>대표</figcaption>}
+                    <button type="button" aria-label={`${photo.name} 삭제`} onClick={() => removeListingPhoto(photo.id)}>×</button>
+                  </figure>
+                ))}
+              </div>
+            )}
+          </fieldset>
           <fieldset className="address-field">
             <legend>거래 주소</legend>
             <div className="address-search-row">
@@ -577,6 +658,24 @@ export default function Home() {
             <small>목록에는 시·구까지만 표시되고, 상세주소는 공개되지 않아요.</small>
           </fieldset>
           <label>장비 설명<textarea name="description" rows={4} placeholder="사용 횟수, 보관 방법, 구성품을 적어주세요." required /></label>
+          <fieldset className="listing-section passport-form-section">
+            <div className="listing-section-head">
+              <div><b><span>3</span> 장비 패스포트 체크</b><small>확인한 상태를 바탕으로 결함과 수선 이력은 설명란에 적어주세요.</small></div>
+              <em>{passportChecks.size}/{passportChecklist.length}</em>
+            </div>
+            <div className="passport-form-grid">
+              {passportChecklist.map((item) => {
+                const checked = passportChecks.has(item.id);
+                return (
+                  <label className={`passport-form-item${checked ? " checked" : ""}`} key={item.id}>
+                    <input type="checkbox" name="passportCheck" value={item.id} checked={checked} onChange={() => togglePassportCheck(item.id)} />
+                    <span aria-hidden="true">{checked ? "✓" : ""}</span>
+                    <span><b>{item.title}</b><small>{item.detail}</small></span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
           <label className="check-label"><input type="checkbox" required /> 결함과 누락 구성품을 빠짐없이 고지했습니다.</label>
           <button className="primary-action" type="submit">장비 등록하기</button>
           {postcodeOpen && (
