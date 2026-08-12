@@ -457,7 +457,7 @@ export default function Home() {
     if (heroPaused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const timer = window.setInterval(
       () => setHeroSlide((current) => (current + 1) % heroSlides.length),
-      6000,
+      4000,
     );
     return () => window.clearInterval(timer);
   }, [heroPaused]);
