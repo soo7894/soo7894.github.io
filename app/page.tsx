@@ -153,11 +153,26 @@ const conditionGuides = [
   { value: "미사용급", detail: "실외 사용·설치 이력이 없고 구성품과 포장이 대부분 보존됨" },
 ] as const;
 
+const listingCategories = [
+  "텐트",
+  "타프",
+  "테이블",
+  "의자",
+  "침낭",
+  "매트",
+  "조명",
+  "식기",
+  "조리도구",
+  "버너·화로",
+  "수납",
+  "기타",
+] as const;
+
 const gearItems: Gear[] = [
   {
     id: 1,
     title: "스노우피크 아메니티돔 M 세트",
-    category: "텐트·타프",
+    category: "텐트",
     price: "298,000원",
     location: "서울 성동구",
     time: "12분 전",
@@ -173,7 +188,7 @@ const gearItems: Gear[] = [
   {
     id: 2,
     title: "헬리녹스 체어원 탄 컬러 2개",
-    category: "테이블·체어",
+    category: "의자",
     price: "126,000원",
     location: "경기 하남시",
     time: "36분 전",
@@ -205,7 +220,7 @@ const gearItems: Gear[] = [
   {
     id: 4,
     title: "씨투써밋 컴포트 플러스 매트",
-    category: "침낭·매트",
+    category: "매트",
     price: "145,000원",
     location: "인천 연수구",
     time: "2시간 전",
@@ -221,7 +236,7 @@ const gearItems: Gear[] = [
   {
     id: 5,
     title: "코베아 구이바다 M 풀세트",
-    category: "키친",
+    category: "버너·화로",
     price: "74,000원",
     location: "서울 은평구",
     time: "어제",
@@ -237,7 +252,7 @@ const gearItems: Gear[] = [
   {
     id: 6,
     title: "네이처하이크 다운 침낭 800FP",
-    category: "침낭·매트",
+    category: "침낭",
     price: "92,000원",
     location: "경기 고양시",
     time: "어제",
@@ -254,11 +269,16 @@ const gearItems: Gear[] = [
 
 const categories = [
   { name: "전체", icon: "⌁", copy: "모든 장비" },
-  { name: "텐트·타프", icon: "△", copy: "1,842개" },
-  { name: "테이블·체어", icon: "▱", copy: "1,129개" },
-  { name: "침낭·매트", icon: "≈", copy: "934개" },
+  { name: "텐트", icon: "△", copy: "1,126개" },
+  { name: "타프", icon: "⌁", copy: "716개" },
+  { name: "테이블", icon: "▱", copy: "624개" },
+  { name: "의자", icon: "∪", copy: "505개" },
+  { name: "침낭", icon: "≈", copy: "516개" },
+  { name: "매트", icon: "▬", copy: "418개" },
   { name: "조명", icon: "✦", copy: "642개" },
-  { name: "키친", icon: "◒", copy: "781개" },
+  { name: "식기", icon: "○", copy: "286개" },
+  { name: "조리도구", icon: "⌇", copy: "274개" },
+  { name: "버너·화로", icon: "◒", copy: "221개" },
   { name: "수납", icon: "▤", copy: "506개" },
 ];
 
@@ -328,6 +348,8 @@ export default function Home() {
   const [listingPhotos, setListingPhotos] = useState<ListingPhoto[]>([]);
   const [passportChecks, setPassportChecks] = useState<Set<string>>(new Set());
   const [listingCondition, setListingCondition] = useState("A급");
+  const [listingCategory, setListingCategory] = useState("텐트");
+  const [customListingCategory, setCustomListingCategory] = useState("");
   const [activeMobileTab, setActiveMobileTab] = useState("home");
   const [paymentGear, setPaymentGear] = useState<Gear | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -615,6 +637,11 @@ export default function Home() {
 
   function submitListing(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const resolvedCategory = listingCategory === "기타" ? customListingCategory.trim() : listingCategory;
+    if (!resolvedCategory) {
+      showToast("기타 카테고리 이름을 직접 입력해 주세요.");
+      return;
+    }
     if (!listingPhotos.length) {
       showToast("장비 사진을 한 장 이상 등록해 주세요.");
       return;
@@ -629,7 +656,7 @@ export default function Home() {
     const newItem: Gear = {
       id: Date.now(),
       title: String(data.get("title") || "새 캠핑 장비"),
-      category: String(data.get("category") || "텐트·타프"),
+      category: resolvedCategory,
       price: `${Number(numericPrice || 0).toLocaleString("ko-KR")}원`,
       location: String(data.get("location") || "서울 성동구"),
       time: "방금 전",
@@ -649,6 +676,8 @@ export default function Home() {
     setListingPhotos([]);
     setPassportChecks(new Set());
     setListingCondition("A급");
+    setListingCategory("텐트");
+    setCustomListingCategory("");
     setActiveCategory("전체");
     setQuery("");
     setPanel(null);
@@ -775,7 +804,41 @@ export default function Home() {
       return (
         <form className="service-form listing-form" onSubmit={submitListing}>
           <div className="step-chip"><b>1</b> 장비 기본 정보 <span>상태표는 등록 후 이어서 작성할 수 있어요.</span></div>
-          <label>카테고리<select name="category" defaultValue="텐트·타프">{categories.slice(1).map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
+          <fieldset className="category-field">
+            <legend>카테고리 <small>장비에 가장 잘 맞는 항목을 하나 골라주세요.</small></legend>
+            <div className="listing-category-grid">
+              {listingCategories.map((category) => (
+                <label className={listingCategory === category ? "selected" : ""} key={category}>
+                  <input
+                    type="radio"
+                    name="category"
+                    value={category}
+                    checked={listingCategory === category}
+                    onChange={() => {
+                      setListingCategory(category);
+                      if (category !== "기타") setCustomListingCategory("");
+                    }}
+                  />
+                  <span aria-hidden="true" />
+                  <b>{category}</b>
+                </label>
+              ))}
+            </div>
+            {listingCategory === "기타" && (
+              <label className="custom-category-field">
+                직접 입력
+                <input
+                  name="customCategory"
+                  value={customListingCategory}
+                  onChange={(event) => setCustomListingCategory(event.target.value)}
+                  placeholder="예: 해먹, 카라비너"
+                  maxLength={20}
+                  autoFocus
+                  required
+                />
+              </label>
+            )}
+          </fieldset>
           <fieldset className="condition-field">
             <legend>상태 <small>등급별 기준을 비교해 가장 가까운 상태를 골라주세요.</small></legend>
             <div className="condition-grade-grid">
@@ -914,7 +977,7 @@ export default function Home() {
     }
 
     if (panel === "notices") {
-      return <div className="notice-list"><article><time>2026.08.11</time><h3>캠프루프 로컬 베타를 시작합니다</h3><p>캠핑 특화 장비 상태표와 커뮤니티 연결 기능을 먼저 선보입니다.</p></article><article><time>2026.08.08</time><h3>안전거래 운영 원칙 안내</h3><p>화기·배터리 등 고위험 장비의 등록과 거래 유의사항을 확인해주세요.</p></article><article><time>2026.08.01</time><h3>초기 카테고리 운영 안내</h3><p>텐트·타프, 테이블·체어, 침낭·매트, 조명, 키친부터 시작합니다.</p></article></div>;
+      return <div className="notice-list"><article><time>2026.08.11</time><h3>캠프루프 로컬 베타를 시작합니다</h3><p>캠핑 특화 장비 상태표와 커뮤니티 연결 기능을 먼저 선보입니다.</p></article><article><time>2026.08.08</time><h3>안전거래 운영 원칙 안내</h3><p>화기·배터리 등 고위험 장비의 등록과 거래 유의사항을 확인해주세요.</p></article><article><time>2026.08.01</time><h3>초기 카테고리 운영 안내</h3><p>텐트, 타프, 테이블, 의자와 식기·조리도구 등 실제 장비 단위로 나누어 운영합니다.</p></article></div>;
     }
 
     if (panel === "policy") {
