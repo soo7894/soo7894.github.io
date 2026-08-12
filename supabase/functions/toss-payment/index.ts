@@ -79,12 +79,17 @@ Deno.serve(async (req: Request) => {
       const testGear = body.testGear && typeof body.testGear === "object"
         ? body.testGear as Record<string, unknown>
         : null;
-      const name = typeof testGear?.name === "string" ? testGear.name.trim().slice(0, 100) : "";
-      const amount = Number(testGear?.amount);
-      if (!name || !Number.isSafeInteger(amount) || amount < 100 || amount > 10_000_000) {
-        return json(origin, { error: "등록 장비의 이름이나 테스트 결제 금액이 올바르지 않습니다." }, 400);
+      if (testGear) {
+        const name = typeof testGear.name === "string" ? testGear.name.trim().slice(0, 100) : "";
+        const amount = Number(testGear.amount);
+        if (!name || !Number.isSafeInteger(amount) || amount < 100 || amount > 10_000_000) {
+          return json(origin, { error: "등록 장비의 이름이나 테스트 결제 금액이 올바르지 않습니다." }, 400);
+        }
+        gear = { name, amount };
+      } else {
+        // Keep already-open pages working after deployment. Refreshed clients send testGear.
+        gear = { name: "등록 캠핑 장비 테스트 주문", amount: 1_000 };
       }
-      gear = { name, amount };
       storedGearId = gearId <= 2_147_483_647 ? gearId : 0;
     }
 

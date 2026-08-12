@@ -29,9 +29,9 @@ type PaymentResult = {
 async function paymentErrorMessage(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "context" in error) {
     const context = error.context;
-    if (context instanceof Response) {
+    if (context && typeof context === "object" && "json" in context && typeof context.json === "function") {
       try {
-        const payload = await context.clone().json() as { error?: unknown; message?: unknown };
+        const payload = await context.json() as { error?: unknown; message?: unknown };
         const serverMessage = typeof payload.error === "string" ? payload.error : payload.message;
         if (typeof serverMessage === "string" && serverMessage.trim()) return serverMessage.slice(0, 160);
       } catch {
