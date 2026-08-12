@@ -1,0 +1,4 @@
+project_id = "teutskrajacupatisemx"
+
+[functions.toss-payment]
+verify_jwt = false

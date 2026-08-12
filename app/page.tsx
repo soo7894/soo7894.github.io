@@ -2,8 +2,36 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import { loadTossPayments, type TossPaymentsPayment } from "@tosspayments/tosspayments-sdk";
 import { House, Plus, Search, TentTree, UserRound } from "lucide-react";
 import { supabase } from "../lib/supabase";
+
+const TOSS_TEST_CLIENT_KEY = "test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq";
+
+type PreparedPayment = {
+  orderId: string;
+  orderName: string;
+  amount: number;
+  currency: "KRW";
+  testMode: true;
+};
+
+type PaymentResult = {
+  status: "DONE";
+  orderId: string;
+  orderName: string;
+  totalAmount: number;
+  method: string;
+  approvedAt: string;
+  testMode: true;
+};
+
+function paymentErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    return String(error.message).slice(0, 160);
+  }
+  return fallback;
+}
 
 type KakaoPostcodeData = {
   zonecode: string;
@@ -301,6 +329,10 @@ export default function Home() {
   const [passportChecks, setPassportChecks] = useState<Set<string>>(new Set());
   const [listingCondition, setListingCondition] = useState("A급");
   const [activeMobileTab, setActiveMobileTab] = useState("home");
+  const [paymentGear, setPaymentGear] = useState<Gear | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  const [paymentError, setPaymentError] = useState("");
   const postcodeLayerRef = useRef<HTMLDivElement>(null);
   const addressDetailRef = useRef<HTMLInputElement>(null);
 
@@ -358,12 +390,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!selectedGear && !selectedNote && !panel) return;
+    if (!selectedGear && !selectedNote && !panel && !paymentGear && !paymentResult && !paymentError) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectedGear(null);
         setSelectedNote(null);
         setPanel(null);
+        setPaymentGear(null);
+        setPaymentResult(null);
+        setPaymentError("");
       }
     };
     document.body.classList.add("modal-open");
@@ -372,7 +407,58 @@ export default function Home() {
       document.body.classList.remove("modal-open");
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [selectedGear, selectedNote, panel]);
+  }, [selectedGear, selectedNote, panel, paymentGear, paymentResult, paymentError]);
+
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      await Promise.resolve();
+      const params = new URLSearchParams(window.location.search);
+      const paymentState = params.get("payment");
+      if (!paymentState || !active) return;
+
+      const clearPaymentQuery = () => {
+        const url = new URL(window.location.href);
+        ["payment", "paymentKey", "orderId", "amount", "code", "message"].forEach((key) => url.searchParams.delete(key));
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+      };
+
+      if (paymentState === "fail") {
+        const code = params.get("code");
+        const message = params.get("message");
+        setPaymentError(code === "PAY_PROCESS_CANCELED" ? "테스트 결제를 취소했어요." : message || "테스트 결제 인증에 실패했습니다.");
+        clearPaymentQuery();
+        return;
+      }
+
+      const paymentKey = params.get("paymentKey");
+      const orderId = params.get("orderId");
+      const amount = Number(params.get("amount"));
+      if (paymentState !== "success" || !paymentKey || !orderId || !Number.isSafeInteger(amount) || amount <= 0) {
+        setPaymentError("결제 결과 정보가 올바르지 않습니다. 다시 시도해주세요.");
+        clearPaymentQuery();
+        return;
+      }
+
+      setPaymentLoading(true);
+      const { data, error } = await supabase.functions.invoke<PaymentResult>("toss-payment", {
+        body: { action: "confirm", paymentKey, orderId, amount },
+      });
+      if (!active) return;
+      if (error || !data) {
+        setPaymentError(paymentErrorMessage(error, "테스트 결제 승인에 실패했습니다."));
+      } else {
+        setPaymentResult(data);
+      }
+      setPaymentLoading(false);
+      clearPaymentQuery();
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function showToast(message: string) {
     setToast(message);
@@ -433,6 +519,59 @@ export default function Home() {
     }
     setPanel(null);
     showToast("안전하게 로그아웃했어요.");
+  }
+
+  function openTestPayment(gear: Gear) {
+    setSelectedGear(null);
+    setPaymentResult(null);
+    setPaymentError("");
+    setPaymentGear(gear);
+  }
+
+  async function startTestPayment() {
+    if (!paymentGear || paymentLoading) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    if (!session) {
+      setPaymentGear(null);
+      setPanel("login");
+      showToast("테스트 결제를 하려면 먼저 로그인해주세요.");
+      return;
+    }
+
+    setPaymentLoading(true);
+    setPaymentError("");
+    try {
+      const { data, error } = await supabase.functions.invoke<PreparedPayment>("toss-payment", {
+        body: { action: "prepare", gearId: paymentGear.id },
+      });
+      if (error || !data) throw error || new Error("테스트 주문을 만들지 못했습니다.");
+
+      const tossPayments = await loadTossPayments(TOSS_TEST_CLIENT_KEY);
+      const payment: TossPaymentsPayment = tossPayments.payment({ customerKey: session.user.id });
+      const baseUrl = `${window.location.origin}${window.location.pathname}`;
+      await payment.requestPayment({
+        method: "CARD",
+        amount: { currency: data.currency, value: data.amount },
+        orderId: data.orderId,
+        orderName: data.orderName,
+        successUrl: `${baseUrl}?payment=success`,
+        failUrl: `${baseUrl}?payment=fail`,
+        customerEmail: session.user.email,
+        customerName: profileName || undefined,
+        windowTarget: "self",
+        card: {
+          useEscrow: false,
+          flowMode: "DEFAULT",
+          useCardPoint: false,
+          useAppCardOnly: false,
+        },
+      });
+    } catch (error) {
+      const message = paymentErrorMessage(error, "토스 테스트 결제창을 열지 못했습니다.");
+      setPaymentError(message.includes("USER_CANCEL") ? "테스트 결제를 취소했어요." : message);
+      setPaymentLoading(false);
+    }
   }
 
   async function openKakaoPostcode() {
@@ -1117,13 +1256,12 @@ export default function Home() {
       </nav>
 
       {selectedGear && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelectedGear(null)}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelectedGear(null)}>
           <section
             className="gear-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-title"
-            onMouseDown={(event) => event.stopPropagation()}
           >
             <button className="modal-close" type="button" aria-label="닫기" onClick={() => setSelectedGear(null)}>×</button>
             <img className="modal-image" src={selectedGear.image} alt="" />
@@ -1140,8 +1278,61 @@ export default function Home() {
               <div className="modal-actions">
                 <button type="button" className={favorites.has(selectedGear.id) ? "liked" : ""} onClick={() => toggleFavorite(selectedGear.id)}>{favorites.has(selectedGear.id) ? "♥ 찜했어요" : "♡ 찜하기"}</button>
                 <button type="button" onClick={() => startChat(selectedGear)}>판매자와 대화하기</button>
+                <button className="toss-pay-button" type="button" onClick={() => openTestPayment(selectedGear)}>토스 테스트 결제</button>
               </div>
             </div>
+          </section>
+        </div>
+      )}
+
+      {paymentGear && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !paymentLoading && setPaymentGear(null)}>
+          <section className="payment-modal" role="dialog" aria-modal="true" aria-labelledby="payment-title">
+            <button className="modal-close" type="button" aria-label="닫기" disabled={paymentLoading} onClick={() => setPaymentGear(null)}>×</button>
+            <span className="test-mode-badge">TEST MODE · 실제 출금 없음</span>
+            <h2 id="payment-title">토스페이먼츠 테스트 결제</h2>
+            <p className="payment-intro">실제 돈은 결제되지 않습니다. 카드·간편결제 화면과 주문 승인 흐름을 안전하게 확인해보세요.</p>
+            <div className="payment-order-card">
+              <img src={paymentGear.image} alt="" />
+              <div><span>{paymentGear.category}</span><b>{paymentGear.title}</b><strong>{paymentGear.price}</strong></div>
+            </div>
+            <ul className="payment-safety-list">
+              <li>토스페이먼츠 공식 공용 테스트 키만 사용합니다.</li>
+              <li>결제 금액은 서버에 저장된 주문 금액과 다시 대조합니다.</li>
+              <li>테스트 결제 후 주문 상태가 자동으로 기록됩니다.</li>
+            </ul>
+            <button className="toss-confirm-button" type="button" disabled={paymentLoading} onClick={startTestPayment}>{paymentLoading ? "테스트 주문 준비 중…" : `${paymentGear.price} 테스트 결제하기`}</button>
+            <button className="payment-cancel-button" type="button" disabled={paymentLoading} onClick={() => setPaymentGear(null)}>다음에 할게요</button>
+          </section>
+        </div>
+      )}
+
+      {(paymentLoading && !paymentGear) && (
+        <div className="modal-backdrop payment-progress" role="status" aria-live="polite">
+          <section className="payment-result-modal"><div className="payment-spinner" /><h2>테스트 결제를 승인하고 있어요</h2><p>잠시만 기다려주세요. 이 창을 닫지 마세요.</p></section>
+        </div>
+      )}
+
+      {paymentResult && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setPaymentResult(null)}>
+          <section className="payment-result-modal" role="dialog" aria-modal="true" aria-labelledby="payment-result-title">
+            <span className="payment-result-icon" aria-hidden="true">✓</span>
+            <span className="test-mode-badge">TEST PAYMENT</span>
+            <h2 id="payment-result-title">테스트 결제가 완료됐어요</h2>
+            <p>{paymentResult.orderName}</p>
+            <dl><div><dt>결제 금액</dt><dd>{paymentResult.totalAmount.toLocaleString("ko-KR")}원</dd></div><div><dt>결제 수단</dt><dd>{paymentResult.method}</dd></div><div><dt>주문 번호</dt><dd>{paymentResult.orderId}</dd></div></dl>
+            <button className="toss-confirm-button" type="button" onClick={() => setPaymentResult(null)}>확인</button>
+          </section>
+        </div>
+      )}
+
+      {paymentError && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setPaymentError("")}>
+          <section className="payment-result-modal is-error" role="dialog" aria-modal="true" aria-labelledby="payment-error-title">
+            <span className="payment-result-icon" aria-hidden="true">!</span>
+            <h2 id="payment-error-title">테스트 결제를 완료하지 못했어요</h2>
+            <p>{paymentError}</p>
+            <button className="toss-confirm-button" type="button" onClick={() => setPaymentError("")}>확인</button>
           </section>
         </div>
       )}

@@ -11,6 +11,9 @@ importers:
       '@supabase/supabase-js':
         specifier: 2.110.9
         version: 2.110.9
+      '@tosspayments/tosspayments-sdk':
+        specifier: ^2.7.1
+        version: 2.7.1
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2
@@ -1342,6 +1345,9 @@ packages:
 
   '@tailwindcss/postcss@4.2.1':
     resolution: {integrity: sha512-OEwGIBnXnj7zJeonOh6ZG9woofIjGrd2BORfvE5p9USYKDCZoQmfqLcfNiRWoJlRWLdNPn2IgVZuWAOM4iTYMw==}
+
+  '@tosspayments/tosspayments-sdk@2.7.1':
+    resolution: {integrity: sha512-nHInxgFvFGm1VtaCS+IPLdtmE+B2a+MCYE9Meq0aR/0L0hAgoGllLS4ciQGb1RtLvp3mHcj3lL80XMi4BqQ7uw==}
 
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
@@ -4116,6 +4122,8 @@ snapshots:
       '@tailwindcss/oxide': 4.2.1
       postcss: 8.5.26
       tailwindcss: 4.2.1
+
+  '@tosspayments/tosspayments-sdk@2.7.1': {}
 
   '@tybys/wasm-util@0.10.3':
     dependencies:
