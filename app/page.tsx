@@ -2,11 +2,11 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { loadTossPayments, type TossPaymentsPayment } from "@tosspayments/tosspayments-sdk";
+import { loadTossPayments } from "@tosspayments/tosspayments-sdk";
 import { House, Plus, Search, TentTree, UserRound } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
-const TOSS_TEST_CLIENT_KEY = "test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq";
+const TOSS_TEST_CLIENT_KEY = "test_gck_docs_Ovk5rk1EwkEbPOW43n07xlzm";
 
 type PreparedPayment = {
   orderId: string;
@@ -548,25 +548,32 @@ export default function Home() {
       if (error || !data) throw error || new Error("테스트 주문을 만들지 못했습니다.");
 
       const tossPayments = await loadTossPayments(TOSS_TEST_CLIENT_KEY);
-      const payment: TossPaymentsPayment = tossPayments.payment({ customerKey: session.user.id });
+      const widgets = tossPayments.widgets({ customerKey: session.user.id });
       const baseUrl = `${window.location.origin}${window.location.pathname}`;
-      await payment.requestPayment({
-        method: "CARD",
-        amount: { currency: data.currency, value: data.amount },
-        orderId: data.orderId,
-        orderName: data.orderName,
-        successUrl: `${baseUrl}?payment=success`,
-        failUrl: `${baseUrl}?payment=fail`,
-        customerEmail: session.user.email,
-        customerName: profileName || undefined,
-        windowTarget: "self",
-        card: {
-          useEscrow: false,
-          flowMode: "DEFAULT",
-          useCardPoint: false,
-          useAppCardOnly: false,
-        },
+      await widgets.setAmount({ currency: data.currency, value: data.amount });
+      const paymentWindow = await widgets.renderPaymentWindow();
+
+      paymentWindow.on("paymentRequest", async () => {
+        setPaymentLoading(true);
+        setPaymentError("");
+        try {
+          await widgets.requestPayment({
+            orderId: data.orderId,
+            orderName: data.orderName,
+            successUrl: `${baseUrl}?payment=success`,
+            failUrl: `${baseUrl}?payment=fail`,
+            customerEmail: session.user.email,
+            customerName: profileName || undefined,
+            windowTarget: "self",
+            metadata: { gearId: paymentGear.id },
+          });
+        } catch (error) {
+          const message = paymentErrorMessage(error, "토스 테스트 결제 요청을 처리하지 못했습니다.");
+          setPaymentError(message.includes("USER_CANCEL") ? "토스 테스트 결제를 취소했어요." : message);
+          setPaymentLoading(false);
+        }
       });
+      setPaymentLoading(false);
     } catch (error) {
       const message = paymentErrorMessage(error, "토스 테스트 결제창을 열지 못했습니다.");
       setPaymentError(message.includes("USER_CANCEL") ? "테스트 결제를 취소했어요." : message);
