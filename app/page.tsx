@@ -471,6 +471,7 @@ export default function Home() {
     }
     const data = new FormData(event.currentTarget);
     const numericPrice = String(data.get("price") || "0").replace(/[^0-9]/g, "");
+    const usageCount = String(data.get("usageCount") || "사용 횟수 미입력");
     const newItem: Gear = {
       id: Date.now(),
       title: String(data.get("title") || "새 캠핑 장비"),
@@ -480,7 +481,7 @@ export default function Home() {
       time: "방금 전",
       condition: String(data.get("condition") || "상태 확인 중"),
       image: listingPhotos[0].url,
-      tags: ["사진 등록", "상태표 6/6", "직거래"],
+      tags: [usageCount, "상태표 6/6", "직거래"],
       passport: 96,
       seller: profileName || "새 캠퍼",
       sellerScore: "첫 거래",
@@ -659,7 +660,8 @@ export default function Home() {
             <input type="hidden" name="location" value={tradeLocation} />
             <small>목록에는 시·구까지만 표시되고, 상세주소는 공개되지 않아요.</small>
           </fieldset>
-          <label>장비 설명<textarea name="description" rows={4} placeholder="사용 횟수, 보관 방법, 구성품을 적어주세요." required /></label>
+          <label>사용 횟수<select name="usageCount" defaultValue="" required><option value="" disabled>사용 횟수를 선택하세요</option><option>미사용</option><option>1-3회</option><option>5-10회</option><option>10회 이상</option></select></label>
+          <label>장비 설명<textarea name="description" rows={4} placeholder="보관 방법, 구성품, 사용 흔적과 수선 이력을 적어주세요." required /></label>
           <fieldset className="listing-section passport-form-section">
             <div className="listing-section-head">
               <div><b><span>3</span> 장비 패스포트 체크</b><small>확인한 상태를 바탕으로 결함과 수선 이력은 설명란에 적어주세요.</small></div>
