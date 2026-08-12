@@ -6,7 +6,7 @@ import { loadTossPayments } from "@tosspayments/tosspayments-sdk";
 import { House, Plus, Search, TentTree, UserRound } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
-const TOSS_TEST_CLIENT_KEY = "test_gck_docs_Ovk5rk1EwkEbPOW43n07xlzm";
+const TOSS_TEST_CLIENT_KEY = "test_ck_kYG57Eba3G6MmnOXBzKE8pWDOxmA";
 
 type PreparedPayment = {
   orderId: string;
@@ -409,7 +409,6 @@ export default function Home() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [paymentError, setPaymentError] = useState("");
-  const paymentWindowRef = useRef<{ destroy: () => void } | null>(null);
   const postcodeLayerRef = useRef<HTMLDivElement>(null);
   const addressDetailRef = useRef<HTMLInputElement>(null);
 
@@ -629,8 +628,6 @@ export default function Home() {
   }
 
   function closeTestPayment() {
-    paymentWindowRef.current?.destroy();
-    paymentWindowRef.current = null;
     setPaymentGear(null);
   }
 
@@ -661,38 +658,19 @@ export default function Home() {
       if (error || !data) throw error || new Error("테스트 주문을 만들지 못했습니다.");
 
       const tossPayments = await loadTossPayments(TOSS_TEST_CLIENT_KEY);
-      const widgets = tossPayments.widgets({ customerKey: session.user.id });
+      const payment = tossPayments.payment({ customerKey: session.user.id });
       const baseUrl = `${window.location.origin}${window.location.pathname}`;
-      await widgets.setAmount({ currency: data.currency, value: data.amount });
-      paymentWindowRef.current?.destroy();
-      paymentWindowRef.current = null;
-      const paymentWindow = await widgets.renderPaymentWindow();
-      paymentWindowRef.current = paymentWindow;
-
-      paymentWindow.on("paymentRequest", async () => {
-        setPaymentLoading(true);
-        setPaymentError("");
-        try {
-          await widgets.requestPayment({
-            orderId: data.orderId,
-            orderName: data.orderName,
-            successUrl: `${baseUrl}?payment=success`,
-            failUrl: `${baseUrl}?payment=fail`,
-            customerEmail: session.user.email,
-            customerName: profileName || undefined,
-          });
-        } catch (error) {
-          paymentWindow.destroy();
-          if (paymentWindowRef.current === paymentWindow) paymentWindowRef.current = null;
-          const message = await paymentErrorMessage(error, "토스 테스트 결제 요청을 처리하지 못했습니다.");
-          setPaymentError(message);
-          setPaymentLoading(false);
-        }
+      await payment.requestPayment({
+        method: "CARD",
+        amount: { currency: data.currency, value: data.amount },
+        orderId: data.orderId,
+        orderName: data.orderName,
+        successUrl: `${baseUrl}?payment=success`,
+        failUrl: `${baseUrl}?payment=fail`,
+        customerEmail: session.user.email,
+        customerName: profileName || undefined,
       });
-      setPaymentLoading(false);
     } catch (error) {
-      paymentWindowRef.current?.destroy();
-      paymentWindowRef.current = null;
       const message = await paymentErrorMessage(error, "토스 테스트 결제창을 열지 못했습니다.");
       setPaymentError(message);
       setPaymentLoading(false);
@@ -1523,13 +1501,13 @@ export default function Home() {
             <button className="modal-close" type="button" aria-label="닫기" disabled={paymentLoading} onClick={closeTestPayment}>×</button>
             <span className="test-mode-badge">TEST MODE · 실제 출금 없음</span>
             <h2 id="payment-title">토스페이먼츠 테스트 결제</h2>
-            <p className="payment-intro">실제 돈은 결제되지 않습니다. 카드·간편결제 화면과 주문 승인 흐름을 안전하게 확인해보세요.</p>
+            <p className="payment-intro">실제 돈은 결제되지 않습니다. 토스 카드 결제창과 주문 승인 흐름을 안전하게 확인해보세요.</p>
             <div className="payment-order-card">
               <img src={paymentGear.image} alt="" />
               <div><span>{paymentGear.category}</span><b>{paymentGear.title}</b><strong>{paymentGear.price}</strong></div>
             </div>
             <ul className="payment-safety-list">
-              <li>토스페이먼츠 공식 공용 테스트 키만 사용합니다.</li>
+              <li>캠프루프 전용 API 테스트 키만 사용합니다.</li>
               <li>결제 금액은 서버에 저장된 주문 금액과 다시 대조합니다.</li>
               <li>테스트 결제 후 주문 상태가 자동으로 기록됩니다.</li>
             </ul>
