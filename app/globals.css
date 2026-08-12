@@ -234,7 +234,7 @@ img { display: block; max-width: 100%; }
 .panel-lead { margin: 0 0 23px; color: var(--muted); font-size: 13px; line-height: 1.75; }
 .service-form { display: grid; gap: 16px; }
 .service-form label { display: grid; gap: 7px; color: var(--forest-800); font-size: 11px; font-weight: 750; }
-.service-form input, .service-form select, .service-form textarea { width: 100%; padding: 12px 13px; border: 1px solid #d5dbd5; border-radius: 7px; outline: 0; background: white; color: var(--ink); font-size: 12px; font-weight: 450; resize: vertical; }
+.service-form input, .service-form select, .service-form textarea { width: 100%; padding: 12px 13px; border: 1px solid #d5dbd5; border-radius: 7px; outline: 0; background: white; color: var(--ink); font-family: inherit; font-size: 12px; font-weight: 450; resize: vertical; }
 .service-form input:focus, .service-form select:focus, .service-form textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(225,112,70,.12); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .address-field { min-width: 0; display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
