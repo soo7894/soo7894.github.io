@@ -26,7 +26,19 @@ type PaymentResult = {
   testMode: true;
 };
 
-function paymentErrorMessage(error: unknown, fallback: string) {
+async function paymentErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "context" in error) {
+    const context = error.context;
+    if (context instanceof Response) {
+      try {
+        const payload = await context.clone().json() as { error?: unknown; message?: unknown };
+        const serverMessage = typeof payload.error === "string" ? payload.error : payload.message;
+        if (typeof serverMessage === "string" && serverMessage.trim()) return serverMessage.slice(0, 160);
+      } catch {
+        // Fall back to the SDK message below when the response has no JSON body.
+      }
+    }
+  }
   if (error && typeof error === "object" && "message" in error) {
     return String(error.message).slice(0, 160);
   }
@@ -469,7 +481,7 @@ export default function Home() {
       });
       if (!active) return;
       if (error || !data) {
-        setPaymentError(paymentErrorMessage(error, "테스트 결제 승인에 실패했습니다."));
+        setPaymentError(await paymentErrorMessage(error, "테스트 결제 승인에 실패했습니다."));
       } else {
         setPaymentResult(data);
       }
@@ -565,7 +577,14 @@ export default function Home() {
     setPaymentError("");
     try {
       const { data, error } = await supabase.functions.invoke<PreparedPayment>("toss-payment", {
-        body: { action: "prepare", gearId: paymentGear.id },
+        body: {
+          action: "prepare",
+          gearId: paymentGear.id,
+          testGear: {
+            name: paymentGear.title,
+            amount: Number(paymentGear.price.replace(/[^0-9]/g, "")),
+          },
+        },
       });
       if (error || !data) throw error || new Error("테스트 주문을 만들지 못했습니다.");
 
@@ -590,14 +609,14 @@ export default function Home() {
             metadata: { gearId: paymentGear.id },
           });
         } catch (error) {
-          const message = paymentErrorMessage(error, "토스 테스트 결제 요청을 처리하지 못했습니다.");
+          const message = await paymentErrorMessage(error, "토스 테스트 결제 요청을 처리하지 못했습니다.");
           setPaymentError(message.includes("USER_CANCEL") ? "토스 테스트 결제를 취소했어요." : message);
           setPaymentLoading(false);
         }
       });
       setPaymentLoading(false);
     } catch (error) {
-      const message = paymentErrorMessage(error, "토스 테스트 결제창을 열지 못했습니다.");
+      const message = await paymentErrorMessage(error, "토스 테스트 결제창을 열지 못했습니다.");
       setPaymentError(message.includes("USER_CANCEL") ? "테스트 결제를 취소했어요." : message);
       setPaymentLoading(false);
     }
@@ -654,7 +673,7 @@ export default function Home() {
     const numericPrice = String(data.get("price") || "0").replace(/[^0-9]/g, "");
     const usageCount = String(data.get("usageCount") || "사용 횟수 미입력");
     const newItem: Gear = {
-      id: Date.now(),
+      id: Date.now() % 2_000_000_000,
       title: String(data.get("title") || "새 캠핑 장비"),
       category: resolvedCategory,
       price: `${Number(numericPrice || 0).toLocaleString("ko-KR")}원`,

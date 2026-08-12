@@ -71,14 +71,32 @@ Deno.serve(async (req: Request) => {
 
   if (body.action === "prepare") {
     const gearId = Number(body.gearId);
-    const gear = Number.isSafeInteger(gearId) ? catalog.get(gearId) : undefined;
-    if (!gear) return json(origin, { error: "현재 테스트 결제를 지원하지 않는 장비입니다." }, 400);
+    if (!Number.isSafeInteger(gearId) || gearId <= 0) return json(origin, { error: "장비 정보가 올바르지 않습니다." }, 400);
+
+    let gear = catalog.get(gearId);
+    let storedGearId = gearId;
+    if (!gear) {
+      const testGear = body.testGear && typeof body.testGear === "object"
+        ? body.testGear as Record<string, unknown>
+        : null;
+      const name = typeof testGear?.name === "string" ? testGear.name.trim().slice(0, 100) : "";
+      const amount = Number(testGear?.amount);
+      if (!name || !Number.isSafeInteger(amount) || amount < 100 || amount > 10_000_000) {
+        return json(origin, { error: "등록 장비의 이름이나 테스트 결제 금액이 올바르지 않습니다." }, 400);
+      }
+      gear = { name, amount };
+      storedGearId = gearId <= 2_147_483_647 ? gearId : 0;
+    }
+
     const orderId = `CL-${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
     const { error } = await admin.from("payment_orders").insert({
-      order_id: orderId, user_id: user.id, gear_id: gearId, order_name: gear.name,
+      order_id: orderId, user_id: user.id, gear_id: storedGearId, order_name: gear.name,
       amount: gear.amount, currency: "KRW", status: "READY",
     });
-    if (error) return json(origin, { error: "테스트 주문을 만들지 못했습니다." }, 500);
+    if (error) {
+      console.error("payment_order_prepare_failed", { code: error.code });
+      return json(origin, { error: "테스트 주문을 만들지 못했습니다." }, 500);
+    }
     return json(origin, { orderId, orderName: gear.name, amount: gear.amount, currency: "KRW", testMode: true });
   }
 
