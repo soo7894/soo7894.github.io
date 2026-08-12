@@ -118,6 +118,13 @@ const passportChecklist = [
   { id: "care", title: "관리", detail: "세척, 건조, 수선 이력을 확인했어요." },
 ] as const;
 
+const conditionGuides = [
+  { value: "A급", detail: "1~3회 사용 · 오염과 손상이 거의 없고 기능이 모두 정상" },
+  { value: "사용감 적음", detail: "생활 오염이나 미세한 스크래치는 있지만 큰 손상 없이 기능 정상" },
+  { value: "B+급", detail: "눈에 띄는 사용 흔적이나 경미한 수선·오염이 있으나 핵심 기능 정상" },
+  { value: "미사용급", detail: "실외 사용·설치 이력이 없고 구성품과 포장이 대부분 보존됨" },
+] as const;
+
 const gearItems: Gear[] = [
   {
     id: 1,
@@ -292,6 +299,7 @@ export default function Home() {
   const [postcodeOpen, setPostcodeOpen] = useState(false);
   const [listingPhotos, setListingPhotos] = useState<ListingPhoto[]>([]);
   const [passportChecks, setPassportChecks] = useState<Set<string>>(new Set());
+  const [listingCondition, setListingCondition] = useState("A급");
   const [activeMobileTab, setActiveMobileTab] = useState("home");
   const postcodeLayerRef = useRef<HTMLDivElement>(null);
   const addressDetailRef = useRef<HTMLInputElement>(null);
@@ -494,6 +502,7 @@ export default function Home() {
     setTradeLocation("");
     setListingPhotos([]);
     setPassportChecks(new Set());
+    setListingCondition("A급");
     setActiveCategory("전체");
     setQuery("");
     setPanel(null);
@@ -620,10 +629,19 @@ export default function Home() {
       return (
         <form className="service-form listing-form" onSubmit={submitListing}>
           <div className="step-chip"><b>1</b> 장비 기본 정보 <span>상태표는 등록 후 이어서 작성할 수 있어요.</span></div>
-          <div className="form-grid">
-            <label>카테고리<select name="category" defaultValue="텐트·타프">{categories.slice(1).map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
-            <label>상태<select name="condition" defaultValue="A급"><option>A급</option><option>사용감 적음</option><option>B+급</option><option>미사용급</option></select></label>
-          </div>
+          <label>카테고리<select name="category" defaultValue="텐트·타프">{categories.slice(1).map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
+          <fieldset className="condition-field">
+            <legend>상태 <small>등급별 기준을 비교해 가장 가까운 상태를 골라주세요.</small></legend>
+            <div className="condition-grade-grid">
+              {conditionGuides.map((guide) => (
+                <label className={listingCondition === guide.value ? "selected" : ""} key={guide.value}>
+                  <input type="radio" name="condition" value={guide.value} checked={listingCondition === guide.value} onChange={() => setListingCondition(guide.value)} />
+                  <span aria-hidden="true">{listingCondition === guide.value ? "✓" : ""}</span>
+                  <span><b>{guide.value}</b><small>{guide.detail}</small></span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <label>장비명<input name="title" placeholder="브랜드와 모델명을 입력하세요" required /></label>
           <label>판매 가격<input name="price" inputMode="numeric" placeholder="예: 180000" required /></label>
           <fieldset className="listing-section photo-section">

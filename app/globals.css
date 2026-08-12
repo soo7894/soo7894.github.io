@@ -237,6 +237,19 @@ img { display: block; max-width: 100%; }
 .service-form input, .service-form select, .service-form textarea { width: 100%; padding: 12px 13px; border: 1px solid #d5dbd5; border-radius: 7px; outline: 0; background: white; color: var(--ink); font-family: inherit; font-size: 12px; font-weight: 450; resize: vertical; }
 .service-form input:focus, .service-form select:focus, .service-form textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(225,112,70,.12); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.condition-field { min-width: 0; display: grid; gap: 9px; margin: 0; padding: 0; border: 0; }
+.condition-field legend { color: var(--forest-800); font-size: 11px; font-weight: 750; }
+.condition-field legend small { margin-left: 7px; color: var(--muted); font-size: 8px; font-weight: 500; }
+.condition-grade-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.condition-grade-grid label { min-width: 0; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; padding: 12px; border: 1px solid #d9dfda; border-radius: 4px 11px 4px 4px; background: white; cursor: pointer; transition: border-color .18s ease, background .18s ease; }
+.condition-grade-grid label:hover { border-color: #aebbb1; }
+.condition-grade-grid label.selected { border-color: #9fb9a7; background: #f0f6f1; box-shadow: 0 0 0 2px rgba(53,91,71,.06); }
+.condition-grade-grid input { position: absolute; width: 1px; height: 1px; overflow: hidden; padding: 0; border: 0; opacity: 0; }
+.condition-grade-grid label > span[aria-hidden] { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid #cfd8d1; border-radius: 50%; background: #f8faf8; color: var(--forest-800); font-size: 11px; }
+.condition-grade-grid label.selected > span[aria-hidden] { border-color: #c7ddcc; background: #deeee1; }
+.condition-grade-grid label > span:last-child { min-width: 0; display: grid; gap: 4px; }
+.condition-grade-grid b { color: var(--forest-900); font-size: 11px; }
+.condition-grade-grid small { color: var(--muted); font-size: 8px; font-weight: 500; line-height: 1.5; }
 .address-field { min-width: 0; display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
 .address-field legend { margin-bottom: 7px; color: var(--forest-800); font-size: 11px; font-weight: 750; }
 .address-field input[readonly] { background: #f8f9f6; color: #4c5a50; }
@@ -525,6 +538,8 @@ img { display: block; max-width: 100%; }
   .service-modal > header h2 { font-size: 23px; }
   .service-modal-body { max-height: calc(100vh - 105px); padding: 20px 17px 24px; }
   .form-grid { grid-template-columns: 1fr; }
+  .condition-field legend small { display: block; margin: 5px 0 0; }
+  .condition-grade-grid { grid-template-columns: 1fr; }
   .address-search-row { grid-template-columns: 1fr; }
   .address-search-row button { min-height: 44px; }
   .postcode-backdrop { padding: 12px; }
