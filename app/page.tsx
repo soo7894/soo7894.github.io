@@ -3,10 +3,34 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { loadTossPayments } from "@tosspayments/tosspayments-sdk";
-import { House, Plus, Search, TentTree, UserRound } from "lucide-react";
+import { ChevronLeft, ChevronRight, House, Plus, Search, TentTree, UserRound } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 const TOSS_TEST_CLIENT_KEY = "test_ck_kYG57Eba3G6MmnOXBzKE8pWDOxmA";
+
+const heroSlides = [
+  {
+    src: "/hero/quiet-forest-camp-v2.png",
+    alt: "고요한 호숫가 소나무 숲에 정돈된 베이지 텐트와 캠핑 의자",
+    title: "아메니티돔 M",
+    detail: "상태 정보 12/12 · 구성품 확인",
+    score: 96,
+  },
+  {
+    src: "/hero/quiet-stream-camp-v3.webp",
+    alt: "안개 낀 소나무 숲 계곡 옆에 정돈된 베이지 터널 텐트",
+    title: "포레스트 터널 텐트",
+    detail: "상태 정보 11/12 · 관리 이력 확인",
+    score: 92,
+  },
+  {
+    src: "/hero/quiet-lakeside-camp-v4.webp",
+    alt: "잔잔한 호수와 소나무 숲 앞에 차분하게 설치된 베이지 캐빈 텐트",
+    title: "레이크 캐빈 텐트",
+    detail: "상태 정보 12/12 · 구성품 확인",
+    score: 94,
+  },
+] as const;
 
 type PreparedPayment = {
   orderId: string;
@@ -409,6 +433,8 @@ export default function Home() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
   const [paymentError, setPaymentError] = useState("");
+  const [heroSlide, setHeroSlide] = useState(0);
+  const [heroPaused, setHeroPaused] = useState(false);
   const postcodeLayerRef = useRef<HTMLDivElement>(null);
   const addressDetailRef = useRef<HTMLInputElement>(null);
 
@@ -426,6 +452,15 @@ export default function Home() {
       return categoryMatch && queryMatch;
     });
   }, [activeCategory, query, listingItems]);
+
+  useEffect(() => {
+    if (heroPaused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(
+      () => setHeroSlide((current) => (current + 1) % heroSlides.length),
+      6000,
+    );
+    return () => window.clearInterval(timer);
+  }, [heroPaused]);
 
   useEffect(() => {
     let active = true;
@@ -1209,11 +1244,27 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="hero-visual">
-          <img
-            src="/hero/quiet-forest-camp-v2.png"
-            alt="고요한 호숫가 소나무 숲에 정돈된 베이지 텐트와 캠핑 의자"
-          />
+        <div
+          className="hero-visual"
+          onMouseEnter={() => setHeroPaused(true)}
+          onMouseLeave={() => setHeroPaused(false)}
+          onFocus={() => setHeroPaused(true)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setHeroPaused(false);
+          }}
+        >
+          <div className="hero-slides">
+            {heroSlides.map((slide, index) => (
+              <img
+                key={slide.src}
+                className={`hero-slide ${heroSlide === index ? "active" : ""}`}
+                src={slide.src}
+                alt={heroSlide === index ? slide.alt : ""}
+                aria-hidden={heroSlide !== index}
+                fetchPriority={index === 0 ? "high" : "auto"}
+              />
+            ))}
+          </div>
           <div className="hero-overlay" />
           <div className="hero-label">
             <span className="live-dot" />
@@ -1225,10 +1276,41 @@ export default function Home() {
           <div className="hero-card">
             <div>
               <span className="mini-label">장비 패스포트 확인</span>
-              <b>아메니티돔 M</b>
-              <small>상태 정보 12/12 · 구성품 확인</small>
+              <b>{heroSlides[heroSlide].title}</b>
+              <small>{heroSlides[heroSlide].detail}</small>
             </div>
-            <span className="passport-score">96</span>
+            <span className="passport-score" aria-label={`패스포트 완성도 ${heroSlides[heroSlide].score}%`}>
+              <span>패스포트 완성도</span>
+              <strong>{heroSlides[heroSlide].score}%</strong>
+            </span>
+          </div>
+          <div className="hero-slider-controls" aria-label="캠핑 이미지 슬라이드">
+            <button
+              type="button"
+              aria-label="이전 이미지"
+              onClick={() => setHeroSlide((current) => (current - 1 + heroSlides.length) % heroSlides.length)}
+            >
+              <ChevronLeft aria-hidden="true" />
+            </button>
+            <div className="hero-slide-dots" aria-label={`${heroSlide + 1} / ${heroSlides.length}`}>
+              {heroSlides.map((slide, index) => (
+                <button
+                  type="button"
+                  key={slide.src}
+                  className={heroSlide === index ? "active" : ""}
+                  aria-label={`${index + 1}번째 이미지 보기`}
+                  aria-current={heroSlide === index ? "true" : undefined}
+                  onClick={() => setHeroSlide(index)}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              aria-label="다음 이미지"
+              onClick={() => setHeroSlide((current) => (current + 1) % heroSlides.length)}
+            >
+              <ChevronRight aria-hidden="true" />
+            </button>
           </div>
         </div>
       </section>
