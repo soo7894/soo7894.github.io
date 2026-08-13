@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "../../lib/supabase";
 import "./admin.css";
 
 type AdminView = "overview" | "listings" | "reports" | "community" | "users" | "settings";
 type ListingStatus = "검수 대기" | "판매 중" | "숨김";
+type AdminAccessState = "checking" | "signed-out" | "forbidden" | "allowed" | "error";
 
 type Listing = {
   id: number;
@@ -61,6 +64,10 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function AdminPage() {
+  const [accessState, setAccessState] = useState<AdminAccessState>("checking");
+  const [adminUser, setAdminUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [accessCheckVersion, setAccessCheckVersion] = useState(0);
   const [activeView, setActiveView] = useState<AdminView>("overview");
   const [listings, setListings] = useState(initialListings);
   const [query, setQuery] = useState("");
@@ -71,6 +78,75 @@ export default function AdminPage() {
   const [toast, setToast] = useState("");
   const [autoReview, setAutoReview] = useState(true);
   const [safePay, setSafePay] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    const verifyAdminAccess = async () => {
+      if (active) setAccessState("checking");
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (!active) return;
+
+      if (userError || !userData.user) {
+        setAdminUser(null);
+        setAccessState("signed-out");
+        return;
+      }
+
+      setAdminUser(userData.user);
+      const { data: membership, error: membershipError } = await supabase
+        .from("admin_users")
+        .select("user_id")
+        .eq("user_id", userData.user.id)
+        .maybeSingle();
+
+      if (!active) return;
+      if (membershipError) {
+        setAccessState("error");
+        return;
+      }
+
+      setAccessState(membership ? "allowed" : "forbidden");
+    };
+
+    void verifyAdminAccess();
+    const { data: authListener } = supabase.auth.onAuthStateChange(() => {
+      window.setTimeout(() => void verifyAdminAccess(), 0);
+    });
+
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, [accessCheckVersion]);
+
+  const signInAsAdmin = async () => {
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/admin/`,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+
+    if (error) {
+      setAuthLoading(false);
+      setAccessState("error");
+    }
+  };
+
+  const signOutAdmin = async () => {
+    setAuthLoading(true);
+    await supabase.auth.signOut();
+    setAuthLoading(false);
+    setAdminUser(null);
+    setAccessState("signed-out");
+  };
 
   const filteredListings = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -98,6 +174,73 @@ export default function AdminPage() {
   };
 
   const pageTitle = navItems.find((item) => item.id === activeView)?.label ?? "대시보드";
+  const adminName = adminUser?.user_metadata?.full_name
+    ?? adminUser?.user_metadata?.name
+    ?? adminUser?.email?.split("@")[0]
+    ?? "관리자";
+
+  if (accessState !== "allowed") {
+    const isChecking = accessState === "checking";
+    const isSignedOut = accessState === "signed-out";
+    const isForbidden = accessState === "forbidden";
+
+    return (
+      <main className="admin-access-page">
+        <section className="admin-access-card" aria-live="polite" aria-busy={isChecking}>
+          <a className="admin-access-brand" href="/" aria-label="캠프루프 홈으로">
+            <span className="admin-brand-mark">C</span>
+            <span><b>캠프루프</b><small>ADMIN CONSOLE</small></span>
+          </a>
+
+          <div className={`admin-access-icon ${isForbidden || accessState === "error" ? "warning" : ""}`}>
+            {isChecking ? <span className="admin-access-spinner" /> : isForbidden ? "!" : "⌾"}
+          </div>
+
+          {isChecking && (
+            <>
+              <h1>관리자 권한을 확인하고 있어요</h1>
+              <p>로그인 정보와 관리자 등록 여부를 안전하게 확인합니다.</p>
+            </>
+          )}
+
+          {isSignedOut && (
+            <>
+              <span className="admin-access-kicker">AUTHORIZED PERSONNEL ONLY</span>
+              <h1>관리자 로그인이 필요합니다</h1>
+              <p>등록된 관리자 Google 계정으로 로그인해야 관리자 페이지를 열 수 있어요.</p>
+              <button className="admin-google-button" onClick={signInAsAdmin} disabled={authLoading}>
+                <span>G</span>{authLoading ? "Google 로그인 연결 중…" : "Google 계정으로 관리자 로그인"}
+              </button>
+            </>
+          )}
+
+          {isForbidden && (
+            <>
+              <span className="admin-access-kicker">ACCESS DENIED</span>
+              <h1>관리자 권한이 없는 계정입니다</h1>
+              <p><b>{adminUser?.email}</b><br />로그인은 완료됐지만 관리자 허용 목록에 등록되지 않았어요.</p>
+              <button className="admin-primary-button" onClick={signOutAdmin} disabled={authLoading}>
+                다른 계정으로 로그인
+              </button>
+            </>
+          )}
+
+          {accessState === "error" && (
+            <>
+              <span className="admin-access-kicker">CHECK FAILED</span>
+              <h1>권한을 확인하지 못했어요</h1>
+              <p>잠시 후 다시 확인해 주세요. 같은 문제가 계속되면 관리자 권한 설정을 확인해 주세요.</p>
+              <button className="admin-primary-button" onClick={() => setAccessCheckVersion((version) => version + 1)}>
+                다시 확인
+              </button>
+            </>
+          )}
+
+          {!isChecking && <a className="admin-home-link" href="/">← 캠프루프 홈으로 돌아가기</a>}
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="admin-shell">
@@ -120,6 +263,7 @@ export default function AdminPage() {
         <div className="admin-sidebar-foot">
           <div className="system-health"><span /> 모든 시스템 정상</div>
           <a href="/">← 캠프루프 홈</a>
+          <button className="admin-signout-button" onClick={signOutAdmin}>관리자 로그아웃</button>
         </div>
       </aside>
 
@@ -146,7 +290,7 @@ export default function AdminPage() {
               )}
             </div>
             <button className="admin-profile" onClick={() => notify("관리자 계정으로 접속 중입니다.")}>
-              <span>관리</span><p><b>캠프루프 운영팀</b><small>최고 관리자</small></p>
+              <span>{adminName.slice(0, 1)}</span><p><b>{adminName}</b><small>{adminUser?.email}</small></p>
             </button>
           </div>
         </header>
